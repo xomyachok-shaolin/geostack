@@ -1,0 +1,167 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.viewer-container {
+  width: 100%;
+  height: 100vh;
+  position: relative;
+}
+
+.cesium-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(38, 38, 38, 0.95);
+  padding: 15px;
+  border-radius: 8px;
+  color: white;
+  z-index: 100;
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+}
+
+.toolbar h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.toolbar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #555;
+  margin-bottom: 15px;
+  user-select: none;
+}
+
+.toolbar.collapsed .toolbar-header {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.collapse-btn {
+  font-size: 12px;
+  color: #888;
+  transition: transform 0.2s;
+}
+
+.toolbar-header:hover .collapse-btn {
+  color: #fff;
+}
+
+.toolbar-content {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.control-group {
+  margin-bottom: 12px;
+}
+
+.control-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.control-group select,
+.control-group button {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background: #444;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.control-group input[type="number"] {
+  width: 70px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  background: #444;
+  color: white;
+  font-size: 13px;
+}
+
+.offset-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.offset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.offset-row span {
+  width: 20px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.control-group button:hover {
+  background: #555;
+}
+
+.control-group select:focus,
+.control-group button:focus {
+  outline: 2px solid #4a9eff;
+}
+
+.control-group.help-text {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #444;
+}
+
+.control-group.help-text small {
+  color: #888;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 20px 30px;
+  border-radius: 8px;
+  font-size: 16px;
+  z-index: 200;
+}

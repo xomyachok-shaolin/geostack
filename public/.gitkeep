@@ -1,0 +1,7 @@
+# Public folder structure for static assets
+# 
+# /public
+#   /models      - 3D Tiles (tileset.json + *.b3dm files)
+#   /tiles       - TMS imagery tiles
+#   /terrain     - Quantized-mesh terrain tiles
+#   /cesium      - Cesium static assets (auto-copied on build)
