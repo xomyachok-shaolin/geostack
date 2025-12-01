@@ -1,28 +1,48 @@
 import * as Cesium from 'cesium';
+import type { Model3D, BasemapConfig, TerrainConfig } from './types';
 
-export function initCesium() {
-  (window as any).CESIUM_BASE_URL = '/cesium/';
+/**
+ * Инициализация Cesium с базовыми настройками
+ */
+export function initCesium(): void {
+  // Установка базового URL для статических ресурсов Cesium
+  (window as unknown as { CESIUM_BASE_URL: string }).CESIUM_BASE_URL = '/cesium/';
+  
   // Cesium Ion токен для доступа к базовым слоям и рельефу
   // Бесплатный токен можно получить на https://cesium.com/ion/tokens
   Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiZGNhZjdkZC0xOTRmLTQ3N2YtODNlYi01ZWY3MzdkMDEyZDIiLCJpZCI6MTU1MjU3LCJpYXQiOjE2ODk4MzY5NjN9.ruoCeuKUThDO8ZKGcU-SufClp8A-bno50wtidTSafFI';
+  
+  // Оптимизации для производительности
+  Cesium.RequestScheduler.maximumRequests = 18;
+  Cesium.RequestScheduler.maximumRequestsPerServer = 6;
 }
 
-export const AVAILABLE_MODELS = [
+/**
+ * Доступные 3D модели
+ */
+export const AVAILABLE_MODELS: Model3D[] = [
   {
     id: 'krasnoarmeiskoe',
     name: 'Красноармейское',
     url: '/models/Krasnoarmeiskoe_textured.json',
     // Примерные координаты центра модели (ECEF -> WGS84)
-    // X=2445000, Y=2638000, Z=5249000 -> примерно 55.7° N, 47.2° E
     center: {
       longitude: 47.15,
       latitude: 55.72,
       height: 200,
     },
   },
-];
+] as const;
 
-export const AVAILABLE_BASEMAPS = [
+/**
+ * Доступные подложки карты
+ */
+export const AVAILABLE_BASEMAPS: BasemapConfig[] = [
+  {
+    id: 'arcgis',
+    name: 'ArcGIS Спутник',
+    type: 'arcgis',
+  },
   {
     id: 'ion_satellite',
     name: 'Cesium Ion Спутник',
@@ -42,19 +62,17 @@ export const AVAILABLE_BASEMAPS = [
     url: 'https://mt1.google.com/vt/lyrs=y&hl=ru&x={x}&y={y}&z={z}',
   },
   {
-    id: 'arcgis_satellite',
-    name: 'ArcGIS Спутник',
-    type: 'arcgis',
-  },
-  {
     id: 'osm',
     name: 'OpenStreetMap',
     type: 'osm',
     url: 'https://tile.openstreetmap.org/',
   },
-];
+] as const;
 
-export const TERRAIN_OPTIONS = [
+/**
+ * Доступные варианты рельефа
+ */
+export const TERRAIN_OPTIONS: TerrainConfig[] = [
   {
     id: 'none',
     name: 'Без рельефа',
@@ -72,4 +90,4 @@ export const TERRAIN_OPTIONS = [
     type: 'quantized-mesh',
     url: '/terrain/',
   },
-];
+] as const;

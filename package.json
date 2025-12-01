@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 next start",
     "lint": "next lint",
+    "clean": "rm -rf .next",
+    "clean:all": "rm -rf .next node_modules/.cache",
+    "rebuild": "pnpm clean && pnpm build",
+    "dev:clean": "pnpm clean && pnpm dev",
     "setup:cesium": "mkdir -p public/cesium && cp -r node_modules/cesium/Build/Cesium/Workers public/cesium/ && cp -r node_modules/cesium/Build/Cesium/ThirdParty public/cesium/ && cp -r node_modules/cesium/Build/Cesium/Assets public/cesium/ && cp -r node_modules/cesium/Build/Cesium/Widgets public/cesium/",
     "postinstall": "pnpm run setup:cesium || true"
   },

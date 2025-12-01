@@ -1,32 +1,20 @@
 'use client';
 
-import { useState } from 'react';
-
-interface Model {
-  id: string;
-  name: string;
-  url: string;
-}
-
-interface Basemap {
-  id: string;
-  name: string;
-  type: string;
-  url?: string;
-}
+import { memo, useCallback, useState, useTransition } from 'react';
+import type { Model3D, BasemapConfig } from '@/lib/types';
 
 interface ToolbarProps {
-  models: Model[];
+  models: Model3D[];
   currentModel: string;
   onModelChange: (url: string) => void;
-  basemaps: Basemap[];
+  basemaps: BasemapConfig[];
   currentBasemap: string;
   onBasemapChange: (id: string) => void;
   onResetView: () => void;
   isLoading: boolean;
 }
 
-export default function Toolbar({
+function Toolbar({
   models,
   currentModel,
   onModelChange,
@@ -37,22 +25,53 @@ export default function Toolbar({
   isLoading,
 }: ToolbarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  const handleToggle = useCallback(() => {
+    setCollapsed(prev => !prev);
+  }, []);
+
+  const handleModelChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    startTransition(() => {
+      onModelChange(e.target.value);
+    });
+  }, [onModelChange]);
+
+  const handleBasemapChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    startTransition(() => {
+      onBasemapChange(e.target.value);
+    });
+  }, [onBasemapChange]);
+
+  const isDisabled = isLoading || isPending;
 
   return (
     <div className={`toolbar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="toolbar-header" onClick={() => setCollapsed(!collapsed)}>
+      <div 
+        className="toolbar-header" 
+        onClick={handleToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && handleToggle()}
+        aria-expanded={!collapsed}
+        aria-label="Переключить панель инструментов"
+      >
         <h3>🌍 GeoStack</h3>
-        <span className="collapse-btn">{collapsed ? '▼' : '▲'}</span>
+        <span className="collapse-btn" aria-hidden="true">
+          {collapsed ? '▼' : '▲'}
+        </span>
       </div>
 
       {!collapsed && (
         <div className="toolbar-content">
           <div className="control-group">
-            <label>3D Модель:</label>
+            <label htmlFor="model-select">3D Модель:</label>
             <select
+              id="model-select"
               value={currentModel}
-              onChange={(e) => onModelChange(e.target.value)}
-              disabled={isLoading}
+              onChange={handleModelChange}
+              disabled={isDisabled}
+              aria-busy={isPending}
             >
               {models.map((model) => (
                 <option key={model.id} value={model.url}>
@@ -63,11 +82,13 @@ export default function Toolbar({
           </div>
 
           <div className="control-group">
-            <label>Подложка:</label>
+            <label htmlFor="basemap-select">Подложка:</label>
             <select
+              id="basemap-select"
               value={currentBasemap}
-              onChange={(e) => onBasemapChange(e.target.value)}
-              disabled={isLoading}
+              onChange={handleBasemapChange}
+              disabled={isDisabled}
+              aria-busy={isPending}
             >
               {basemaps.map((basemap) => (
                 <option key={basemap.id} value={basemap.id}>
@@ -78,12 +99,28 @@ export default function Toolbar({
           </div>
 
           <div className="control-group">
-            <button onClick={onResetView} disabled={isLoading}>
+            <button 
+              onClick={onResetView} 
+              disabled={isDisabled}
+              aria-label="Вернуться к модели"
+            >
               📍 К модели
             </button>
+          </div>
+
+          <div className="control-group help-text">
+            <small>
+              <strong>Управление:</strong><br />
+              • ЛКМ + движение — вращение<br />
+              • ПКМ / колесо — масштаб<br />
+              • СКМ + движение — наклон<br />
+              • Ctrl + ЛКМ — перемещение
+            </small>
           </div>
         </div>
       )}
     </div>
   );
 }
+
+export default memo(Toolbar);

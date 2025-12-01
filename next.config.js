@@ -5,6 +5,15 @@ const path = require('path');
 const nextConfig = {
   output: 'standalone',
   
+  // Включаем сжатие
+  compress: true,
+  
+  // Оптимизация сборки
+  swcMinify: true,
+  
+  // Отключаем source maps в production
+  productionBrowserSourceMaps: false,
+  
   webpack: (config, { isServer, dev }) => {
     if (!isServer) {
       // Копируем статические файлы Cesium только в dev режиме
@@ -41,6 +50,23 @@ const nextConfig = {
         https: false,
         zlib: false,
       };
+      
+      // Оптимизация размера бандла
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          ...config.optimization?.splitChunks,
+          cacheGroups: {
+            ...config.optimization?.splitChunks?.cacheGroups,
+            cesium: {
+              test: /[\\/]node_modules[\\/]cesium[\\/]/,
+              name: 'cesium',
+              chunks: 'all',
+              priority: 10,
+            },
+          },
+        },
+      };
     }
 
     return config;
@@ -60,7 +86,35 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'server.arcgisonline.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'services.arcgisonline.com',
+      },
     ],
+  },
+  
+  // Заголовки для кэширования статических ресурсов
+  async headers() {
+    return [
+      {
+        source: '/cesium/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/models/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=604800',
+          },
+        ],
+      },
+    ];
   },
 };
 
