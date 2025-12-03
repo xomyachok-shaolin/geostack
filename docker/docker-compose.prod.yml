@@ -1,0 +1,33 @@
+version: '3.8'
+
+# Production конфигурация для сервера geokiosk@192.168.70.220
+# Nginx проксирует с http://geokiosk.ru/ на порт 5000
+
+services:
+  geostack:
+    image: geostack:latest
+    container_name: geostack
+    restart: always
+    ports:
+      - "5000:3000"  # Nginx проксирует с geokiosk.ru на :5000
+    volumes:
+      # Монтируем 3D модели из хоста
+      - ../data/models:/app/public/models:ro
+    environment:
+      - NODE_ENV=production
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+      - outside
+
+networks:
+  app-network:
+    driver: bridge
+  outside:
+    external: true

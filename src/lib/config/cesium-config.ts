@@ -1,5 +1,5 @@
 import * as Cesium from 'cesium';
-import type { Model3D, BasemapConfig, TerrainConfig } from './types';
+import type { Model3D, BasemapConfig, TerrainConfig } from '../types';
 
 /**
  * Инициализация Cesium с базовыми настройками
@@ -24,15 +24,24 @@ export const AVAILABLE_MODELS: Model3D[] = [
   {
     id: 'krasnoarmeiskoe',
     name: 'Красноармейское',
-    url: '/models/Krasnoarmeiskoe_textured.json',
-    // Примерные координаты центра модели (ECEF -> WGS84)
+    url: '/models/krasnoarmeiskoe/tileset.json',
     center: {
       longitude: 47.15,
       latitude: 55.72,
       height: 200,
     },
   },
-] as const;
+  {
+    id: 'kanash',
+    name: 'Канаш',
+    url: '/models/kanash/tileset.json',
+    center: {
+      longitude: 47.49,
+      latitude: 55.51,
+      height: 200,
+    },
+  },
+];
 
 /**
  * Доступные подложки карты
@@ -78,16 +87,29 @@ export const TERRAIN_OPTIONS: TerrainConfig[] = [
     name: 'Без рельефа',
     type: 'none',
   },
+
   {
     id: 'ion_world',
     name: 'Cesium World Terrain',
     type: 'ion',
     assetId: 1, // Cesium World Terrain
   },
-  {
-    id: 'local',
-    name: 'Локальный рельеф',
-    type: 'quantized-mesh',
-    url: '/terrain/',
-  },
 ] as const;
+
+/**
+ * Координаты покрытия локального рельефа
+ */
+export const LOCAL_TERRAIN_BOUNDS = {
+  krasnoarmeiskoe: {
+    west: 47.0,
+    south: 55.6,
+    east: 47.3,
+    north: 55.85,
+  },
+  kanash: {
+    west: 47.35,
+    south: 55.4,
+    east: 47.65,
+    north: 55.6,
+  },
+} as const;

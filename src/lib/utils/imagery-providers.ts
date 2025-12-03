@@ -1,6 +1,8 @@
 import * as Cesium from 'cesium';
-import type { BasemapConfig, TerrainConfig, LoadResult } from './types';
+import type { BasemapConfig, TerrainConfig, LoadResult } from '../types';
 import { LIMITS } from './constants';
+
+
 
 /**
  * Создаёт провайдер изображений на основе конфигурации подложки
@@ -108,18 +110,6 @@ export async function createTerrainProvider(
         console.warn('⚠️ Cesium World Terrain требует действующий Ion токен.');
         console.warn('Получите бесплатный токен: https://cesium.com/ion/tokens');
         console.warn('Затем замените токен в src/lib/cesium-config.ts');
-        return { 
-          success: false, 
-          error: error instanceof Error ? error : new Error('Unknown error') 
-        };
-      }
-
-    case 'quantized-mesh':
-      try {
-        const terrain = await Cesium.CesiumTerrainProvider.fromUrl(config.url!);
-        return { success: true, data: terrain };
-      } catch (error) {
-        console.error('Error loading terrain:', error);
         return { 
           success: false, 
           error: error instanceof Error ? error : new Error('Unknown error') 

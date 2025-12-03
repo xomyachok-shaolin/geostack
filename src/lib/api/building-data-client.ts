@@ -4,7 +4,7 @@
  * Источники: OSM Overpass, Nominatim, НСПД Росреестр
  */
 
-import { UnifiedBuildingData, OrganizationInfo } from './types';
+import { UnifiedBuildingData, OrganizationInfo } from '../types';
 
 const API_ENDPOINT = '/api/building-data';
 

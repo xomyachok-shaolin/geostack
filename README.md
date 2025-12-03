@@ -56,10 +56,8 @@ pnpm start
 geostack/
 ├── src/
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── building-data/    # API для данных о зданиях
-│   │   │       └── route.ts      # OSM + Nominatim + НСПД
-│   │   ├── globals.css           # Глобальные стили
+│   │   ├── api/building-data/    # API для данных о зданиях
+│   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── components/
@@ -67,17 +65,27 @@ geostack/
 │   │   ├── InfoPanel.tsx         # Панель информации о здании
 │   │   └── Toolbar.tsx           # Панель управления
 │   └── lib/
-│       ├── cesium-config.ts      # Настройки Cesium, модели, подложки
-│       ├── constants.ts          # Константы (таймауты, размеры)
-│       ├── imagery-providers.ts  # Провайдеры подложек
-│       ├── types.ts              # TypeScript типы
-│       └── data-sources/
-│           ├── building-data-client.ts  # Клиентский сервис данных
-│           └── types.ts                 # Типы для данных зданий
+│       ├── api/                  # API клиенты
+│       │   └── building-data-client.ts
+│       ├── config/               # Конфигурация
+│       │   └── cesium-config.ts
+│       ├── types/                # TypeScript типы
+│       │   └── index.ts
+│       └── utils/                # Утилиты
+│           ├── constants.ts
+│           └── imagery-providers.ts
+├── data/
+│   ├── models/                   # 3D Tiles модели
+│   │   ├── krasnoarmeiskoe/
+│   │   └── kanash/
+│   └── terrain/                  # DEM файлы рельефа
+├── docker/                       # Docker конфигурация
+│   ├── deploy.sh
+│   ├── docker-compose.yml
+│   └── docker-compose.prod.yml
 ├── public/
-│   ├── cesium/          # Статические файлы CesiumJS (автогенерация)
-│   └── models/          # Симлинк на models/
-├── models/              # 3D Tiles модели
+│   ├── cesium/                   # Статические файлы CesiumJS
+│   └── models -> ../data/models  # Симлинк
 ├── scripts/
 │   └── nspd-fetcher.py  # Скрипт для загрузки данных НСПД
 └── ...

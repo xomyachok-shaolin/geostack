@@ -10,6 +10,8 @@ export interface Model3D {
     latitude: number;
     height: number;
   };
+  // Смещение высоты модели (для выравнивания с terrain)
+  heightOffset?: number;
 }
 
 // Типы для подложек
@@ -33,7 +35,7 @@ export interface BasemapConfig {
 export interface TerrainConfig {
   id: string;
   name: string;
-  type: 'ion' | 'quantized-mesh' | 'none';
+  type: 'ion' | 'none';
   url?: string;
   assetId?: number;
 }
@@ -72,3 +74,37 @@ export type LoadResult<T> = {
   success: false;
   error: Error;
 };
+
+// Унифицированные данные о здании
+export interface UnifiedBuildingData {
+  // Координаты
+  coordinates?: {
+    lat: number;
+    lon: number;
+  };
+  // Адрес
+  address?: string;
+  street?: string;
+  houseNumber?: string;
+  city?: string;
+  // Характеристики здания
+  buildingType?: string;
+  floors?: number;
+  yearBuilt?: number;
+  wallMaterial?: string;
+  roofMaterial?: string;
+  heating?: string;
+  // Кадастровые данные
+  cadastralNumber?: string;
+  area?: number;
+  cadastralCost?: number;
+}
+
+// Информация об организации
+export interface OrganizationInfo {
+  name: string;
+  type?: string;
+  phone?: string;
+  website?: string;
+  workingHours?: string;
+}

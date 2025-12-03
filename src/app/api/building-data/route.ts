@@ -14,16 +14,18 @@ const CACHE_TTL = 10 * 60 * 1000;
 function cacheSet(key: string, data: unknown) {
   // Удаляем устаревшие записи
   const now = Date.now();
-  for (const [k, v] of cache.entries()) {
+  const keysToDelete: string[] = [];
+  cache.forEach((v, k) => {
     if (now - v.timestamp > CACHE_TTL) {
-      cache.delete(k);
+      keysToDelete.push(k);
     }
-  }
+  });
+  keysToDelete.forEach(k => cache.delete(k));
   
   // LRU: если кэш переполнен, удаляем самую старую запись
   if (cache.size >= MAX_CACHE_SIZE) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey) cache.delete(oldestKey);
+    const firstKey = Array.from(cache.keys())[0];
+    if (firstKey) cache.delete(firstKey);
   }
   
   cache.set(key, { data, timestamp: now });

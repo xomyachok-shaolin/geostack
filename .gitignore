@@ -9,11 +9,20 @@ build/
 # Cesium static files (generated from node_modules)
 public/cesium/
 
-# Models (large 3D files)
-/models
+# 3D Models (large files, stored separately)
+public/models/
+
+# Source data (GeoTIFF files)
+data/terrain/
+data/models/
 
 # Misc
 .DS_Store
 *.log
 .env
 .env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/

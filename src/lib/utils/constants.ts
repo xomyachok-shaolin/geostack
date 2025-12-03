@@ -3,21 +3,21 @@
 // Настройки 3D Tiles
 export const TILESET_DEFAULTS = {
   /** Порог ошибки экранного пространства - меньше = выше качество, больше нагрузка */
-  MAXIMUM_SCREEN_SPACE_ERROR: 24,
-  /** Кэш для тайлов в байтах (2048 МБ) */
-  CACHE_BYTES: 2048 * 1024 * 1024,
-  /** Максимальное переполнение кэша в байтах (1024 МБ) */
-  MAX_CACHE_OVERFLOW_BYTES: 1024 * 1024 * 1024,
+  MAXIMUM_SCREEN_SPACE_ERROR: 16,
+  /** Кэш для тайлов - без лимита (Number.MAX_SAFE_INTEGER) */
+  CACHE_BYTES: Number.MAX_SAFE_INTEGER,
+  /** Максимальное переполнение кэша - без лимита */
+  MAX_CACHE_OVERFLOW_BYTES: Number.MAX_SAFE_INTEGER,
   /** Использовать динамическую ошибку экранного пространства */
-  DYNAMIC_SCREEN_SPACE_ERROR: true,
+  DYNAMIC_SCREEN_SPACE_ERROR: false,
   /** Плотность для динамической ошибки */
   DYNAMIC_SCREEN_SPACE_ERROR_DENSITY: 0.00278,
   /** Фактор динамической ошибки */
   DYNAMIC_SCREEN_SPACE_ERROR_FACTOR: 4.0,
   /** Пропускать уровни детализации для быстрой загрузки */
-  SKIP_LEVEL_OF_DETAIL: true,
+  SKIP_LEVEL_OF_DETAIL: false,
   /** Предпочитать листовые тайлы */
-  PREFER_LEAVES: true,
+  PREFER_LEAVES: false,
 } as const;
 
 // Настройки камеры

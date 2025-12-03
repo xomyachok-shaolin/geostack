@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 
-import { initCesium, AVAILABLE_MODELS, AVAILABLE_BASEMAPS } from '@/lib/cesium-config';
-import { createImageryProvider } from '@/lib/imagery-providers';
-import { TILESET_DEFAULTS, CAMERA_DEFAULTS, TIMING, RENDERING_DEFAULTS } from '@/lib/constants';
+import { initCesium, AVAILABLE_MODELS, AVAILABLE_BASEMAPS } from '@/lib/config/cesium-config';
+import { createImageryProvider } from '@/lib/utils/imagery-providers';
+import { TILESET_DEFAULTS, CAMERA_DEFAULTS, TIMING, RENDERING_DEFAULTS } from '@/lib/utils/constants';
 import type { FlyToOptions } from '@/lib/types';
 import Toolbar from './Toolbar';
 import InfoPanel from './InfoPanel';
@@ -56,7 +56,7 @@ export default function CesiumViewer() {
   const [currentBasemap, setCurrentBasemap] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('geostack_basemap');
-      if (saved && ['arcgis', 'osm', '2gis'].includes(saved)) {
+      if (saved && AVAILABLE_BASEMAPS.some(b => b.id === saved)) {
         return saved;
       }
     }
@@ -183,6 +183,20 @@ export default function CesiumViewer() {
   // Инициализация viewer
   useEffect(() => {
     if (!containerRef.current) return;
+
+    // Ждём пока контейнер получит размеры
+    const container = containerRef.current;
+    if (container.clientWidth === 0 || container.clientHeight === 0) {
+      // Контейнер ещё не имеет размеров, ждём
+      const checkSize = setInterval(() => {
+        if (container.clientWidth > 0 && container.clientHeight > 0) {
+          clearInterval(checkSize);
+          // Перезапускаем эффект
+          setIsLoading(true);
+        }
+      }, 50);
+      return () => clearInterval(checkSize);
+    }
 
     initCesium();
 
@@ -369,7 +383,7 @@ export default function CesiumViewer() {
     };
   }, [currentBasemap]);
 
-  // Загрузка рельефа
+  // Загрузка рельефа (всегда Cesium World Terrain)
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
@@ -384,10 +398,10 @@ export default function CesiumViewer() {
         
         viewerRef.current.terrainProvider = terrain;
         viewerRef.current.scene.requestRender();
+        console.log('Cesium World Terrain loaded');
       } catch (err) {
         if (cancelled) return;
         console.error('Error loading terrain:', err);
-        // Рельеф не критичен, просто логируем
       }
     };
 
@@ -438,6 +452,10 @@ export default function CesiumViewer() {
           return;
         }
 
+        // Получаем bounding sphere и cartographic для использования далее
+        const boundingSphere = tileset.boundingSphere;
+        const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
+
         viewerRef.current.scene.primitives.add(tileset);
         tilesetRef.current = tileset;
 
@@ -448,10 +466,7 @@ export default function CesiumViewer() {
           }
         });
 
-        // Логируем информацию о модели
-        const boundingSphere = tileset.boundingSphere;
-        const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
-        
+        // Логируем информацию о модели (используем уже объявленные переменные)
         console.log('Tileset loaded:', currentModel);
         console.log('Center (lon, lat, h):', 
           Cesium.Math.toDegrees(cartographic.longitude).toFixed(4),

@@ -4,7 +4,7 @@ import { memo, useEffect, useState, useCallback } from 'react';
 import { 
   fetchBuildingData, 
   BuildingDataResponse 
-} from '@/lib/data-sources/building-data-client';
+} from '@/lib/api/building-data-client';
 
 interface InfoPanelProps {
   coordinates: { lat: number; lon: number } | null;
