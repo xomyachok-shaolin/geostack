@@ -12,7 +12,7 @@ services:
       - "5000:3000"  # Nginx проксирует с geokiosk.ru на :5000
     volumes:
       # Монтируем 3D модели из хоста
-      - ../data/models:/app/public/models:ro
+      - ./data/models:/app/public/models:ro
     environment:
       - NODE_ENV=production
       - NODE_TLS_REJECT_UNAUTHORIZED=0
