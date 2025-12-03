@@ -108,15 +108,6 @@ function Toolbar({
             </button>
           </div>
 
-          <div className="control-group help-text">
-            <small>
-              <strong>Управление:</strong><br />
-              • ЛКМ + движение — вращение<br />
-              • ПКМ / колесо — масштаб<br />
-              • СКМ + движение — наклон<br />
-              • Ctrl + ЛКМ — перемещение
-            </small>
-          </div>
         </div>
       )}
     </div>

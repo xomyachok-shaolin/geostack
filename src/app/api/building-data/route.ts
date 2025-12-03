@@ -5,8 +5,29 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+// LRU кэш с ограничением размера
+const MAX_CACHE_SIZE = 500;
 const cache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_TTL = 10 * 60 * 1000;
+
+// Очистка устаревших записей и LRU вытеснение
+function cacheSet(key: string, data: unknown) {
+  // Удаляем устаревшие записи
+  const now = Date.now();
+  for (const [k, v] of cache.entries()) {
+    if (now - v.timestamp > CACHE_TTL) {
+      cache.delete(k);
+    }
+  }
+  
+  // LRU: если кэш переполнен, удаляем самую старую запись
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
+  
+  cache.set(key, { data, timestamp: now });
+}
 
 let lastOSMTime = 0;
 let lastNominatimTime = 0;
@@ -50,7 +71,7 @@ export async function GET(request: NextRequest) {
       data = { source: 'all', success: osm.success || nominatim.success || nspd.success, osm, nominatim, nspd };
     }
 
-    if (data.success) cache.set(cacheKey, { data, timestamp: Date.now() });
+    if (data.success) cacheSet(cacheKey, data);
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ source, success: false, error: (error as Error).message });
@@ -71,7 +92,7 @@ async function fetchWithRetry<T extends { success: boolean }>(fn: () => Promise<
       if (i < maxRetries - 1) await new Promise(r => setTimeout(r, 300 * (i + 1)));
     }
   }
-  return lastResult || ({ success: false, error: 'Max retries exceeded' } as T);
+  return lastResult || ({ success: false, error: 'Max retries exceeded' } as unknown as T);
 }
 
 // OSM Overpass API
@@ -169,8 +190,9 @@ interface OSMElement {
   center?: { lat: number; lon: number };
 }
 
-function parseBuilding(f: { properties?: { label?: string; options?: Record<string, unknown> } }) {
+function parseBuilding(f: { properties?: { label?: string; options?: Record<string, unknown>; systemInfo?: Record<string, unknown> } }) {
   const o = f.properties?.options || {};
+  const sys = f.properties?.systemInfo || {};
   return {
     cadastralNumber: String(o.cad_num || f.properties?.label || ''),
     address: String(o.readable_address || ''),
@@ -181,24 +203,44 @@ function parseBuilding(f: { properties?: { label?: string; options?: Record<stri
     floors: Number(o.floors || 0),
     undergroundFloors: Number(o.underground_floors || 0),
     yearBuilt: Number(o.year_built || 0),
+    yearCommissioning: Number(o.year_commisioning || 0),
     materials: String(o.materials || ''),
     cadastralCost: Number(o.cost_value || 0),
     costDate: String(o.cost_determination_date || ''),
     ownershipType: String(o.ownership_type || ''),
     status: String(o.status || ''),
+    registrationDate: String(o.build_record_registration_date || ''),
+    culturalHeritage: String(o.cultural_heritage_val || ''),
+    quarterCadNumber: String(o.quarter_cad_number || ''),
+    lastUpdated: String(sys.updated || ''),
   };
 }
 
-function parseLandPlot(f: { properties?: { label?: string; options?: Record<string, unknown> } }) {
+function parseLandPlot(f: { properties?: { label?: string; categoryName?: string; options?: Record<string, unknown>; systemInfo?: Record<string, unknown> } }) {
   const o = f.properties?.options || {};
+  const sys = f.properties?.systemInfo || {};
   return {
     cadastralNumber: String(o.cad_num || f.properties?.label || ''),
     address: String(o.readable_address || ''),
+    type: String(o.land_record_type || ''),
+    subtype: String(o.land_record_subtype || ''),
     category: String(o.land_record_category_type || ''),
-    area: Number(o.land_record_area || o.specified_area || 0),
+    area: Number(o.land_record_area || o.specified_area || o.area || 0),
+    declaredArea: o.declared_area,
+    specifiedArea: Number(o.specified_area || 0),
     permittedUse: String(o.permitted_use_established_by_document || ''),
     cadastralCost: Number(o.cost_value || 0),
+    costIndex: Number(o.cost_index || 0),
+    costDate: String(o.cost_determination_date || ''),
+    costApplicationDate: String(o.cost_application_date || ''),
+    costRegistrationDate: String(o.cost_registration_date || ''),
+    determinationCause: String(o.determination_couse || ''),
     ownershipType: String(o.ownership_type || ''),
     status: String(o.status || ''),
+    previouslyPosted: String(o.previously_posted || ''),
+    registrationDate: String(o.land_record_reg_date || ''),
+    quarterCadNumber: String(o.quarter_cad_number || ''),
+    categoryName: String(f.properties?.categoryName || ''),
+    lastUpdated: String(sys.updated || ''),
   };
 }

@@ -14,6 +14,88 @@ interface InfoPanelProps {
 }
 
 /**
+ * Копирование текста в буфер обмена
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Fallback для старых браузеров
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      return true;
+    } catch {
+      return false;
+    } finally {
+      document.body.removeChild(textArea);
+    }
+  }
+}
+
+/**
+ * Компонент для кадастрового номера с кнопками копирования и ссылкой на ПКК
+ */
+function CadastralNumber({ number, type = 'building' }: { number: string; type?: 'building' | 'land' }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(number);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // Ссылка на ПКК Росреестра
+  const pkkUrl = `https://pkk.rosreestr.ru/#/search/${encodeURIComponent(number)}`;
+  // Ссылка на НСПД
+  const nspdUrl = `https://nspd.gov.ru/map?thematicLayer=true&search=${encodeURIComponent(number)}`;
+
+  return (
+    <div className="cadastral-number">
+      <span className="cadastral-value">{number}</span>
+      <div className="cadastral-actions">
+        <button
+          className="cadastral-btn"
+          onClick={handleCopy}
+          title={copied ? 'Скопировано!' : 'Копировать'}
+          aria-label="Копировать кадастровый номер"
+        >
+          {copied ? '✓' : '📋'}
+        </button>
+        <a
+          href={pkkUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cadastral-btn"
+          title="Открыть на ПКК Росреестра"
+          aria-label="Открыть на ПКК"
+        >
+          🔗
+        </a>
+        <a
+          href={nspdUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cadastral-btn"
+          title="Открыть на НСПД"
+          aria-label="Открыть на НСПД"
+        >
+          🗺️
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Компонент панели информации о здании
  * Получает реальные данные из OSM и ПКК Росреестра через серверный API
  */
@@ -73,17 +155,22 @@ function InfoPanel({ coordinates, tileId, onClose, isVisible }: InfoPanelProps) 
   const region = nominatim?.address?.state;
   const postcode = nominatim?.address?.postcode;
 
+  // Определяем тип объекта для иконки
+  const hasBuilding = !!nspd?.building?.cadastralNumber;
+  const hasLand = !!nspd?.landPlot?.cadastralNumber;
+  const objectIcon = hasBuilding ? '🏢' : hasLand ? '🌍' : '📍';
+
   return (
     <div className="info-panel">
       {/* Заголовок */}
       <div className="info-panel-header">
         <div className="info-panel-title">
-          <span className="info-panel-icon">🏢</span>
+          <span className="info-panel-icon">{objectIcon}</span>
           <div>
-            <h3>{address || 'Информация о здании'}</h3>
-            {buildingType && (
+            <h3>{address || (hasLand && !hasBuilding ? 'Информация о земельном участке' : 'Информация об объекте')}</h3>
+            {(buildingType || (hasLand && !hasBuilding && nspd?.landPlot?.category)) && (
               <span className="info-panel-type">
-                {buildingType}
+                {buildingType || nspd?.landPlot?.category}
               </span>
             )}
           </div>
@@ -218,7 +305,7 @@ function InfoPanel({ coordinates, tileId, onClose, isVisible }: InfoPanelProps) 
                   <div className="info-row info-row-small">
                     <div className="info-data">
                       <span className="info-label">Кадастровый номер</span>
-                      <span className="info-value">{nspd.building.cadastralNumber}</span>
+                      <CadastralNumber number={nspd.building.cadastralNumber} type="building" />
                     </div>
                   </div>
                 )}
@@ -343,82 +430,114 @@ function InfoPanel({ coordinates, tileId, onClose, isVisible }: InfoPanelProps) 
               </>
             )}
             
-            {/* Данные о земельном участке */}
-            {nspd.landPlot && (
-              <>
-                {nspd.landPlot.cadastralNumber && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">{nspd.building ? 'Земельный участок' : 'Кадастровый номер (ЗУ)'}</span>
-                      <span className="info-value">{nspd.landPlot.cadastralNumber}</span>
-                    </div>
-                  </div>
-                )}
-                {!nspd.building && nspd.landPlot.address && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Адрес</span>
-                      <span className="info-value" style={{ fontSize: '0.85em' }}>{nspd.landPlot.address}</span>
-                    </div>
-                  </div>
-                )}
-                {nspd.landPlot.type && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Тип</span>
-                      <span className="info-value">{nspd.landPlot.type}{nspd.landPlot.subtype ? ` (${nspd.landPlot.subtype})` : ''}</span>
-                    </div>
-                  </div>
-                )}
-                {nspd.landPlot.category && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Категория земель</span>
-                      <span className="info-value">{nspd.landPlot.category}</span>
-                    </div>
-                  </div>
-                )}
-                {nspd.landPlot?.area && nspd.landPlot.area > 0 && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Площадь (ЗУ)</span>
-                      <span className="info-value">{nspd.landPlot.area.toLocaleString('ru-RU')} м²</span>
-                    </div>
-                  </div>
-                )}
-                {nspd.landPlot.permittedUse && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Разрешённое использование</span>
-                      <span className="info-value" style={{ fontSize: '0.85em' }}>{nspd.landPlot.permittedUse}</span>
-                    </div>
-                  </div>
-                )}
-                {nspd.landPlot?.cadastralCost && nspd.landPlot.cadastralCost > 0 && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Кадастровая стоимость (ЗУ)</span>
-                      <span className="info-value">{nspd.landPlot.cadastralCost.toLocaleString('ru-RU')} ₽</span>
-                    </div>
-                  </div>
-                )}
-                {!nspd.building && nspd.landPlot.ownershipType && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Форма собственности</span>
-                      <span className="info-value">{nspd.landPlot.ownershipType}</span>
-                    </div>
-                  </div>
-                )}
-                {!nspd.building && nspd.landPlot.status && (
-                  <div className="info-row info-row-small">
-                    <div className="info-data">
-                      <span className="info-label">Статус</span>
-                      <span className="info-value">{nspd.landPlot.status}</span>
-                    </div>
-                  </div>
-                )}
-              </>
+          </div>
+        )}
+
+        {/* Отдельная секция для земельного участка */}
+        {nspd && !isLoading && nspd.landPlot && (
+          <div className="info-section">
+            <div className="info-section-title">🌍 Земельный участок</div>
+            
+            {nspd.landPlot.cadastralNumber && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Кадастровый номер</span>
+                  <CadastralNumber number={nspd.landPlot.cadastralNumber} type="land" />
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.address && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Адрес</span>
+                  <span className="info-value" style={{ fontSize: '0.85em' }}>{nspd.landPlot.address}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.type && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Тип участка</span>
+                  <span className="info-value">{nspd.landPlot.type}{nspd.landPlot.subtype ? ` (${nspd.landPlot.subtype})` : ''}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.category && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Категория земель</span>
+                  <span className="info-value">{nspd.landPlot.category}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot?.area && nspd.landPlot.area > 0 && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Площадь</span>
+                  <span className="info-value">
+                    {nspd.landPlot.area >= 10000 
+                      ? `${(nspd.landPlot.area / 10000).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} га (${nspd.landPlot.area.toLocaleString('ru-RU')} м²)`
+                      : `${nspd.landPlot.area.toLocaleString('ru-RU')} м²`
+                    }
+                  </span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.permittedUse && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Разрешённое использование</span>
+                  <span className="info-value" style={{ fontSize: '0.85em' }}>{nspd.landPlot.permittedUse}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot?.cadastralCost && nspd.landPlot.cadastralCost > 0 && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Кадастровая стоимость</span>
+                  <span className="info-value">{nspd.landPlot.cadastralCost.toLocaleString('ru-RU')} ₽</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.costDate && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Дата оценки</span>
+                  <span className="info-value">{nspd.landPlot.costDate}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.ownershipType && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Форма собственности</span>
+                  <span className="info-value">{nspd.landPlot.ownershipType}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.status && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Статус</span>
+                  <span className="info-value">{nspd.landPlot.status}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.registrationDate && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Дата регистрации</span>
+                  <span className="info-value">{nspd.landPlot.registrationDate}</span>
+                </div>
+              </div>
+            )}
+            {nspd.landPlot.quarterCadNumber && (
+              <div className="info-row info-row-small">
+                <div className="info-data">
+                  <span className="info-label">Кадастровый квартал</span>
+                  <span className="info-value">{nspd.landPlot.quarterCadNumber}</span>
+                </div>
+              </div>
             )}
           </div>
         )}

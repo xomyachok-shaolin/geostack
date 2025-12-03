@@ -10,6 +10,7 @@ const API_ENDPOINT = '/api/building-data';
 
 // Debounce для предотвращения частых запросов при кликах
 let debounceTimer: NodeJS.Timeout | null = null;
+let currentAbortController: AbortController | null = null;
 const DEBOUNCE_DELAY = 300; // ms
 
 // Локальный кэш на клиенте
@@ -190,12 +191,26 @@ export function fetchBuildingData(
   if (debounceTimer) {
     clearTimeout(debounceTimer);
   }
+  if (currentAbortController) {
+    currentAbortController.abort();
+  }
+
+  // Создаём новый AbortController
+  const abortController = new AbortController();
+  currentAbortController = abortController;
 
   debounceTimer = setTimeout(async () => {
     try {
-      const data = await fetchBuildingDataImmediate(lat, lon);
-      callback(data, false);
+      const data = await fetchBuildingDataImmediate(lat, lon, 30, abortController.signal);
+      // Проверяем, не был ли запрос отменён
+      if (!abortController.signal.aborted) {
+        callback(data, false);
+      }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Запрос отменён, игнорируем
+        return;
+      }
       console.error('Error fetching building data:', error);
       callback({
         errors: [error instanceof Error ? error.message : 'Неизвестная ошибка'],
@@ -209,6 +224,7 @@ export function fetchBuildingData(
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
+    abortController.abort();
   };
 }
 
@@ -219,7 +235,8 @@ export function fetchBuildingData(
 export async function fetchBuildingDataImmediate(
   lat: number,
   lon: number,
-  radius: number = 30
+  radius: number = 30,
+  signal?: AbortSignal
 ): Promise<BuildingDataResponse> {
   const cacheKey = `${lat.toFixed(6)}:${lon.toFixed(6)}:${radius}`;
   
@@ -235,7 +252,7 @@ export async function fetchBuildingDataImmediate(
 
   try {
     // Используем source=all для одного запроса ко всем источникам
-    const response = await fetchFromAPI('all', lat, lon, radius) as AllSourcesResponse;
+    const response = await fetchFromAPI('all', lat, lon, radius, signal) as AllSourcesResponse;
     
     // Обрабатываем OSM
     if (response.osm?.success) {
@@ -304,7 +321,8 @@ async function fetchFromAPI(
   source: 'osm' | 'pkk' | 'nominatim' | 'all',
   lat: number,
   lon: number,
-  radius: number
+  radius: number,
+  signal?: AbortSignal
 ): Promise<OSMResponse | PKKResponse | NominatimResponse | AllSourcesResponse> {
   const params = new URLSearchParams({
     source,
@@ -313,7 +331,7 @@ async function fetchFromAPI(
     radius: radius.toString(),
   });
 
-  const response = await fetch(`${API_ENDPOINT}?${params}`);
+  const response = await fetch(`${API_ENDPOINT}?${params}`, { signal });
   
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Network error' }));

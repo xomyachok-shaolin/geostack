@@ -42,8 +42,27 @@ export default function CesiumViewer() {
   const imageryLayerRef = useRef<Cesium.ImageryLayer | null>(null);
   const selectedMarkerRef = useRef<Cesium.Entity | null>(null);
 
-  const [currentModel, setCurrentModel] = useState(AVAILABLE_MODELS[0]?.url || '');
-  const [currentBasemap, setCurrentBasemap] = useState('arcgis'); // ArcGIS как дефолт - более надёжный
+  // Загружаем сохранённые настройки из localStorage
+  const [currentModel, setCurrentModel] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('geostack_model');
+      if (saved && AVAILABLE_MODELS.some(m => m.url === saved)) {
+        return saved;
+      }
+    }
+    return AVAILABLE_MODELS[0]?.url || '';
+  });
+  
+  const [currentBasemap, setCurrentBasemap] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('geostack_basemap');
+      if (saved && ['arcgis', 'osm', '2gis'].includes(saved)) {
+        return saved;
+      }
+    }
+    return 'arcgis'; // ArcGIS как дефолт - более надёжный
+  });
+  
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Инициализация...');
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +71,19 @@ export default function CesiumViewer() {
   const [selectedCoordinates, setSelectedCoordinates] = useState<{ lat: number; lon: number } | null>(null);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [isInfoPanelVisible, setIsInfoPanelVisible] = useState(false);
+
+  // Сохраняем настройки в localStorage при изменении
+  useEffect(() => {
+    if (currentModel) {
+      localStorage.setItem('geostack_model', currentModel);
+    }
+  }, [currentModel]);
+
+  useEffect(() => {
+    if (currentBasemap) {
+      localStorage.setItem('geostack_basemap', currentBasemap);
+    }
+  }, [currentBasemap]);
 
   // Функция для перелёта к тайлсету
   const flyToTileset = useCallback((tileset: Cesium.Cesium3DTileset, options: FlyToOptions = {}) => {
@@ -154,6 +186,10 @@ export default function CesiumViewer() {
 
     initCesium();
 
+    // Создаём скрытый контейнер для кредитов
+    const creditContainer = document.createElement('div');
+    creditContainer.style.display = 'none';
+
     const viewer = new Cesium.Viewer(containerRef.current, {
       terrainProvider: undefined,
       baseLayerPicker: false,
@@ -170,6 +206,8 @@ export default function CesiumViewer() {
       shadows: false,
       // @ts-ignore - отключаем базовую подложку
       baseLayer: false,
+      // Скрываем панель атрибуции
+      creditContainer,
       // Оптимизации производительности
       requestRenderMode: true,
       maximumRenderTimeChange: Infinity,
