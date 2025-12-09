@@ -137,7 +137,8 @@ export async function GET(
       const tiffPath = `/data/ortho/${regionMeta.folder}/${tiffFile}`;
       
       // TiTiler COG endpoint с параметром url
-      const titilerUrl = `${TITILER_URL}/cog/tiles/WebMercatorQuad/${z}/${x}/${yXyz}.png?url=${encodeURIComponent(tiffPath)}`;
+      // Добавляем nodata=0 чтобы чёрные области (RGB 0,0,0) стали прозрачными
+      const titilerUrl = `${TITILER_URL}/cog/tiles/WebMercatorQuad/${z}/${x}/${yXyz}.png?url=${encodeURIComponent(tiffPath)}&nodata=0&return_mask=true`;
       
       const response = await fetch(titilerUrl, { 
         cache: 'no-store',

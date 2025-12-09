@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently \"pnpm:titiler:start\" \"NODE_TLS_REJECT_UNAUTHORIZED=0 next dev\"",
     "dev:next": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
-    "dev:titiler": "docker start titiler-dev 2>/dev/null || docker run -d --name titiler-dev --network host -v $(pwd)/data/ortho:/data/ortho:ro -e PORT=8000 ghcr.io/developmentseed/titiler:latest",
+    "dev:titiler": "docker start titiler-dev 2>/dev/null || docker run -d --name titiler-dev -p 8000:80 -v $(pwd)/data/ortho:/data/ortho:ro ghcr.io/developmentseed/titiler:latest",
     "dev:next-only": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
     "build": "next build",
     "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 next start",
@@ -14,7 +14,7 @@
     "clean:all": "rm -rf .next node_modules/.cache",
     "rebuild": "pnpm clean && pnpm build",
     "dev:clean": "pnpm clean && pnpm dev",
-    "titiler:start": "docker start titiler-dev 2>/dev/null || docker run -d --name titiler-dev --network host -v $(pwd)/data/ortho:/data/ortho:ro -e PORT=8000 ghcr.io/developmentseed/titiler:latest",
+    "titiler:start": "docker start titiler-dev 2>/dev/null || docker run -d --name titiler-dev -p 8000:80 -v $(pwd)/data/ortho:/data/ortho:ro ghcr.io/developmentseed/titiler:latest",
     "titiler:stop": "docker stop titiler-dev",
     "titiler:logs": "docker logs -f titiler-dev",
     "setup:cesium": "mkdir -p public/cesium && cp -r node_modules/cesium/Build/Cesium/Workers public/cesium/ && cp -r node_modules/cesium/Build/Cesium/ThirdParty public/cesium/ && cp -r node_modules/cesium/Build/Cesium/Assets public/cesium/ && cp -r node_modules/cesium/Build/Cesium/Widgets public/cesium/",

@@ -155,9 +155,81 @@ function create3DTilesLayer(
         ? new URL(tilesUrl, window.location.origin).toString()
         : tilesUrl;
       
+      // Получаем базовый URL (директория где лежит tileset.json)
+      const baseUrl = absoluteUrl.substring(0, absoluteUrl.lastIndexOf('/') + 1);
+      
       console.log('🚀 TilesRenderer URL:', absoluteUrl);
+      console.log('🚀 Base URL:', baseUrl);
       
       tilesRenderer = new TilesRenderer(absoluteUrl);
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tr = tilesRenderer as any;
+      
+      // КРИТИЧНО: Monkey-patch preprocessNode чтобы кодировать URI ДО обработки библиотекой
+      // Проблема: new URL() падает если в URI есть [ или ]
+      const originalPreprocessNode = tr.preprocessNode.bind(tilesRenderer);
+      tr.preprocessNode = function(tile: any, tileSetDir: string, parentTile: any = null) {
+        // Отладка - логируем все URI
+        if (tile?.content?.uri) {
+          console.log('🔍 preprocessNode URI:', tile.content.uri, 'basePath:', tileSetDir);
+        }
+        // Кодируем URI ДО вызова оригинального метода
+        if (tile?.content?.uri) {
+          const uri = tile.content.uri;
+          // Проверяем есть ли спецсимволы которые ломают new URL() (включая закодированные)
+          if (/[\[\]\s\(\)]|%5B|%5D|%20/.test(uri)) {
+            // Декодируем -> кодируем чтобы нормализовать
+            const encodedUri = uri.split('/').map((seg: string) => {
+              if (seg === '.' || seg === '..') return seg;
+              try {
+                const decoded = decodeURIComponent(seg);
+                return encodeURIComponent(decoded);
+              } catch {
+                return encodeURIComponent(seg);
+              }
+            }).join('/');
+            console.log('🔗 Patched preprocessNode encoded URI:', uri, '->', encodedUri);
+            tile.content.uri = encodedUri;
+          }
+        }
+        // Вызываем оригинальный метод
+        return originalPreprocessNode(tile, tileSetDir, parentTile);
+      };
+      
+      // Также патчим requestTileContents чтобы отлавливать ошибки
+      const originalRequestTileContents = tr.requestTileContents?.bind(tilesRenderer);
+      if (originalRequestTileContents) {
+        tr.requestTileContents = function(tile: any) {
+          if (tile?.content?.uri) {
+            console.log('📦 requestTileContents:', tile.content.uri, '__basePath:', tile.__basePath);
+            // Проверяем что __basePath валидный
+            if (!tile.__basePath) {
+              console.error('❌ Missing __basePath for tile:', tile);
+            }
+            
+            // Пробуем создать URL заранее чтобы отловить ошибку
+            try {
+              const testUrl = new URL(tile.content.uri, tile.__basePath + '/');
+              console.log('✅ URL created successfully:', testUrl.toString());
+            } catch (e) {
+              console.error('❌ URL creation failed!');
+              console.error('  URI:', tile.content.uri);
+              console.error('  __basePath:', tile.__basePath);
+              console.error('  Combined base:', tile.__basePath + '/');
+              console.error('  Error:', e);
+              
+              // Пробуем исправить - если basePath невалидный
+              if (tile.__basePath && !tile.__basePath.startsWith('http')) {
+                // basePath должен быть абсолютным URL
+                tile.__basePath = new URL(tile.__basePath, window.location.origin).toString();
+                console.log('🔧 Fixed __basePath:', tile.__basePath);
+              }
+            }
+          }
+          return originalRequestTileContents(tile);
+        };
+      }
       
       // Настройки TilesRenderer - ПОЛНОСТЬЮ отключаем frustum culling и LOD
       tilesRenderer.errorTarget = Infinity; // Загружать ВСЕ тайлы независимо от размера
@@ -169,8 +241,7 @@ function create3DTilesLayer(
       tilesRenderer.group.matrixAutoUpdate = false;
       
       // ВАЖНО: Переопределяем calculateTileViewError чтобы ВСЕГДА считать тайлы видимыми
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tr = tilesRenderer as any;
+      // Используем tr объявленный выше
       
       // Ключевой метод - переопределяем проверку видимости тайла
       // Это заставит TilesRenderer загружать все тайлы независимо от frustum
@@ -236,37 +307,23 @@ function create3DTilesLayer(
               queuedTiles: tr.queuedTiles,
             });
             
-            // ПРИНУДИТЕЛЬНО запрашиваем загрузку контента root тайла
+            // Проверяем root тайл для отладки
             if (tr.root) {
-              console.log('🔄 Forcing root tile content load...');
+              console.log('🔄 Root tile loaded, children count:', tr.root.children?.length || 0);
+              
+              // Устанавливаем флаги видимости чтобы библиотека загрузила тайлы
               tr.root.__visible = true;
               tr.root.__active = true;
               tr.root.__used = true;
               tr.root.__inFrustum = true;
               
-              // Проверяем есть ли у root тайла контент
-              if (tr.root.content && tr.root.content.uri) {
-                console.log('📥 Root tile has content:', tr.root.content.uri);
-                // Принудительно запрашиваем загрузку
-                if (tr.requestTileContents) {
-                  tr.requestTileContents(tr.root);
-                }
-              }
-              
-              // Проверяем дочерние тайлы и ПРИНУДИТЕЛЬНО загружаем первые N
+              // НЕ вызываем requestTileContents вручную - библиотека сделает это сама в update()
+              // Просто устанавливаем флаги для дочерних тайлов
               if (tr.root.children && tr.root.children.length > 0) {
                 console.log('📥 Root has children:', tr.root.children.length);
-                const maxToLoad = Math.min(20, tr.root.children.length); // Загружаем первые 20
+                const maxToMark = Math.min(50, tr.root.children.length);
                 
-                // Проверяем какие методы загрузки доступны
-                console.log('🔧 Download methods available:', {
-                  queueTileForDownload: typeof tr.queueTileForDownload,
-                  requestTileContents: typeof tr.requestTileContents,
-                  downloadQueue: tr.downloadQueue,
-                  downloadQueueAdd: typeof tr.downloadQueue?.add,
-                });
-                
-                for (let i = 0; i < maxToLoad; i++) {
+                for (let i = 0; i < maxToMark; i++) {
                   const child = tr.root.children[i];
                   child.__visible = true;
                   child.__active = true;
@@ -274,25 +331,8 @@ function create3DTilesLayer(
                   child.__inFrustum = true;
                   child.__error = Infinity;
                   child.__distanceFromCamera = 0;
-                  child.__loadingState = 0; // UNLOADED
-                  
-                  if (child.content?.uri) {
-                    console.log(`📥 Child ${i} content:`, child.content.uri, 'loadingState:', child.__loadingState);
-                    
-                    // Добавляем в queuedTiles для обработки в update()
-                    if (tr.queuedTiles && !tr.queuedTiles.includes(child)) {
-                      tr.queuedTiles.push(child);
-                    }
-                    
-                    // Также пробуем queueTileForDownload если есть
-                    if (tr.queueTileForDownload) {
-                      tr.queueTileForDownload(child);
-                      console.log(`🔄 Queued for download: child ${i}`);
-                    }
-                  }
                 }
-                
-                console.log('📊 queuedTiles after adding:', tr.queuedTiles?.length);
+                console.log('📊 Marked first', maxToMark, 'children as visible');
               }
             }
           }
@@ -379,6 +419,7 @@ function create3DTilesLayer(
         if (scene) {
           let meshCount = 0;
           let totalVertices = 0;
+          
           scene.traverse((obj) => {
             if (obj instanceof THREE.Mesh) {
               meshCount++;
@@ -390,13 +431,27 @@ function create3DTilesLayer(
               // Отключаем frustum culling для надёжности
               obj.frustumCulled = false;
               obj.visible = true;
+              
+              // Обрабатываем материалы
+              const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+              
+              materials.forEach((mat) => {
+                if (mat instanceof THREE.MeshStandardMaterial) {
+                  mat.side = THREE.DoubleSide;
+                  mat.metalness = 0;
+                  mat.roughness = 1;
+                  mat.needsUpdate = true;
+                } else if (mat instanceof THREE.MeshBasicMaterial) {
+                  mat.side = THREE.DoubleSide;
+                  mat.needsUpdate = true;
+                }
+              });
             }
           });
           
           // ПРИНУДИТЕЛЬНО добавляем scene в группу если её там нет
           if (!scene.parent && tilesRenderer) {
             tilesRenderer.group.add(scene);
-            console.log(`✅ Manually added scene to group: ${uri}`);
           }
           
           // Делаем тайл видимым принудительно
@@ -404,11 +459,7 @@ function create3DTilesLayer(
             tile.__visible = true;
           }
           
-          console.log(`📦 Model loaded: ${uri}`, {
-            meshCount,
-            totalVertices,
-            addedToGroup: !!scene.parent,
-          });
+          console.log(`📦 Model loaded: ${uri}`, { meshCount, totalVertices });
         }
       });
       
@@ -616,9 +667,50 @@ function create3DTilesLayer(
         debugCam.updateMatrixWorld(true);
       }
 
+      // 🔴 ДИАГНОСТИКА прямо перед рендером
+      if (renderCount === 100 || renderCount === 300) {
+        let totalMeshes = 0;
+        let visibleMeshes = 0;
+        const meshDetails: string[] = [];
+        
+        scene.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            totalMeshes++;
+            if (obj.visible) visibleMeshes++;
+            if (meshDetails.length < 5) {
+              const worldPos = new THREE.Vector3();
+              obj.getWorldPosition(worldPos);
+              meshDetails.push(`visible=${obj.visible}, pos=(${worldPos.x.toFixed(1)}, ${worldPos.y.toFixed(1)}, ${worldPos.z.toFixed(1)})`);
+            }
+          }
+        });
+        
+        console.log(`🔴 PRE-RENDER #${renderCount}:`, {
+          totalMeshes,
+          visibleMeshes,
+          sceneVisible: scene.visible,
+          worldVisible: world.visible,
+          tilesGroupVisible: tilesRenderer.group.visible,
+          meshDetails,
+        });
+      }
+      
       // Рендерим
       renderer.resetState();
       renderer.render(scene, camera);
+      
+      // 🔴 Проверяем render info - сколько реально отрендерено
+      if (renderCount === 100 || renderCount === 300) {
+        const info = renderer.info;
+        console.log(`🎨 RENDER INFO #${renderCount}:`, {
+          calls: info.render.calls,
+          triangles: info.render.triangles,
+          points: info.render.points,
+          lines: info.render.lines,
+          geometries: info.memory.geometries,
+          textures: info.memory.textures,
+        });
+      }
       
       // Отладка: проверяем что рендерится
       if (renderCount === 200) {
