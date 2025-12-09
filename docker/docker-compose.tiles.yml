@@ -1,0 +1,28 @@
+version: '3.8'
+
+# Docker Compose для запуска TiTiler сервера
+# Раздаёт тайлы из COG файлов на лету
+
+services:
+  tile-server:
+    image: ghcr.io/developmentseed/titiler:latest
+    container_name: tile-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data/ortho:/data/ortho:ro
+    environment:
+      # Разрешаем доступ к локальным файлам
+      - TITILER_API_DISABLE_CACHING=false
+      - CPL_VSIL_CURL_ALLOWED_EXTENSIONS=.tif,.TIF,.tiff,.TIFF
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Использование:
+# 1. Создать COG: gdal_translate -of COG input.tif data/ortho/region.cog.tif
+# 2. Запустить: docker-compose -f docker/docker-compose.tiles.yml up -d
+# 3. Тайлы доступны: http://localhost:8000/cog/tiles/{z}/{x}/{y}?url=file:///data/ortho/region.cog.tif

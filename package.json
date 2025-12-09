@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
+    "dev": "concurrently \"pnpm:titiler:start\" \"NODE_TLS_REJECT_UNAUTHORIZED=0 next dev\"",
+    "dev:next": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
+    "dev:titiler": "docker start titiler-dev 2>/dev/null || docker run -d --name titiler-dev --network host -v $(pwd)/data/ortho:/data/ortho:ro -e PORT=8000 ghcr.io/developmentseed/titiler:latest",
+    "dev:next-only": "NODE_TLS_REJECT_UNAUTHORIZED=0 next dev",
     "build": "next build",
     "start": "NODE_TLS_REJECT_UNAUTHORIZED=0 next start",
     "lint": "next lint",
@@ -11,20 +14,30 @@
     "clean:all": "rm -rf .next node_modules/.cache",
     "rebuild": "pnpm clean && pnpm build",
     "dev:clean": "pnpm clean && pnpm dev",
+    "titiler:start": "docker start titiler-dev 2>/dev/null || docker run -d --name titiler-dev --network host -v $(pwd)/data/ortho:/data/ortho:ro -e PORT=8000 ghcr.io/developmentseed/titiler:latest",
+    "titiler:stop": "docker stop titiler-dev",
+    "titiler:logs": "docker logs -f titiler-dev",
     "setup:cesium": "mkdir -p public/cesium && cp -r node_modules/cesium/Build/Cesium/Workers public/cesium/ && cp -r node_modules/cesium/Build/Cesium/ThirdParty public/cesium/ && cp -r node_modules/cesium/Build/Cesium/Assets public/cesium/ && cp -r node_modules/cesium/Build/Cesium/Widgets public/cesium/",
     "postinstall": "pnpm run setup:cesium || true"
   },
   "dependencies": {
+    "3d-tiles-renderer": "^0.4.18",
+    "@types/sharp": "^0.32.0",
+    "cesium": "^1.114.0",
+    "maplibre-gl": "^5.14.0",
     "next": "14.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "cesium": "^1.114.0"
+    "sharp": "^0.34.5",
+    "three": "^0.181.2"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "typescript": "^5",
-    "copy-webpack-plugin": "^12.0.2"
+    "@types/three": "^0.181.0",
+    "concurrently": "^9.2.1",
+    "copy-webpack-plugin": "^12.0.2",
+    "typescript": "^5"
   }
 }

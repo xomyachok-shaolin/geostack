@@ -1,15 +1,17 @@
 import * as Cesium from 'cesium';
-import type { BasemapConfig, TerrainConfig, LoadResult } from '../types';
+import type { CesiumBasemapConfig, LoadResult } from '../types';
 import { LIMITS } from './constants';
+import { LOCAL_ORTHOPHOTOS } from '../config/cesium-config';
 
 
 
 /**
- * Создаёт провайдер изображений на основе конфигурации подложки
+ * Создаёт провайдер изображений на основе конфигурации подложки (Cesium)
+ * Для multi_ortho возвращает массив провайдеров
  */
 export async function createImageryProvider(
-  config: BasemapConfig
-): Promise<Cesium.ImageryProvider | null> {
+  config: CesiumBasemapConfig
+): Promise<Cesium.ImageryProvider | Cesium.ImageryProvider[] | null> {
   switch (config.type) {
     case 'ion':
       return createIonImageryProvider(config.assetId!);
@@ -50,9 +52,36 @@ export async function createImageryProvider(
     case 'url':
       return new Cesium.UrlTemplateImageryProvider({
         url: config.url!,
+        rectangle: config.rectangle
+          ? Cesium.Rectangle.fromDegrees(
+              config.rectangle.west,
+              config.rectangle.south,
+              config.rectangle.east,
+              config.rectangle.north
+            )
+          : undefined,
         minimumLevel: config.minZoom ?? LIMITS.MIN_IMAGERY_ZOOM,
         maximumLevel: config.maxZoom ?? LIMITS.MAX_IMAGERY_ZOOM,
       });
+
+    case 'local_ortho':
+      // Создаём провайдеры для всех локальных ортофотопланов
+      // Сортируем по приоритету: сначала низкий (районы), потом высокий (детальные)
+      // Так детальные слои будут сверху
+      const sortedOrthos = [...LOCAL_ORTHOPHOTOS].sort((a, b) => 
+        (a.priority ?? 0) - (b.priority ?? 0)
+      );
+      return sortedOrthos.map(ortho => 
+        new Cesium.UrlTemplateImageryProvider({
+          url: ortho.url,
+          rectangle: Cesium.Rectangle.fromDegrees(
+            ortho.rectangle.west,
+            ortho.rectangle.south,
+            ortho.rectangle.east,
+            ortho.rectangle.north
+          ),
+        })
+      );
 
     case 'none':
       return null;
@@ -91,33 +120,4 @@ async function createArcGisImageryProvider(): Promise<Cesium.ArcGisMapServerImag
   return Cesium.ArcGisMapServerImageryProvider.fromUrl(
     'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
   );
-}
-
-/**
- * Создаёт провайдер рельефа на основе конфигурации
- */
-export async function createTerrainProvider(
-  config: TerrainConfig
-): Promise<LoadResult<Cesium.TerrainProvider | undefined>> {
-  switch (config.type) {
-    case 'ion':
-      try {
-        const terrain = await Cesium.CesiumTerrainProvider.fromIonAssetId(config.assetId!);
-        console.log('Ion terrain loaded successfully, assetId:', config.assetId);
-        return { success: true, data: terrain };
-      } catch (error) {
-        console.error('Error loading Ion terrain:', error);
-        console.warn('⚠️ Cesium World Terrain требует действующий Ion токен.');
-        console.warn('Получите бесплатный токен: https://cesium.com/ion/tokens');
-        console.warn('Затем замените токен в src/lib/cesium-config.ts');
-        return { 
-          success: false, 
-          error: error instanceof Error ? error : new Error('Unknown error') 
-        };
-      }
-
-    case 'none':
-    default:
-      return { success: true, data: undefined };
-  }
 }

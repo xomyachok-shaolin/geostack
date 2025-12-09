@@ -3,21 +3,31 @@
 // Настройки 3D Tiles
 export const TILESET_DEFAULTS = {
   /** Порог ошибки экранного пространства - меньше = выше качество, больше нагрузка */
-  MAXIMUM_SCREEN_SPACE_ERROR: 16,
+  MAXIMUM_SCREEN_SPACE_ERROR: 24,  // Увеличено с 16 - быстрее загружается, чуть ниже качество при приближении
   /** Кэш для тайлов - без лимита (Number.MAX_SAFE_INTEGER) */
   CACHE_BYTES: Number.MAX_SAFE_INTEGER,
   /** Максимальное переполнение кэша - без лимита */
   MAX_CACHE_OVERFLOW_BYTES: Number.MAX_SAFE_INTEGER,
-  /** Использовать динамическую ошибку экранного пространства */
-  DYNAMIC_SCREEN_SPACE_ERROR: false,
+  /** Использовать динамическую ошибку экранного пространства - адаптивное качество */
+  DYNAMIC_SCREEN_SPACE_ERROR: true,  // Включено - уменьшает нагрузку при движении камеры
   /** Плотность для динамической ошибки */
-  DYNAMIC_SCREEN_SPACE_ERROR_DENSITY: 0.00278,
+  DYNAMIC_SCREEN_SPACE_ERROR_DENSITY: 0.001,  // Уменьшено - более агрессивная оптимизация
   /** Фактор динамической ошибки */
-  DYNAMIC_SCREEN_SPACE_ERROR_FACTOR: 4.0,
+  DYNAMIC_SCREEN_SPACE_ERROR_FACTOR: 8.0,  // Увеличено с 4.0 - быстрее загружается при удалении
   /** Пропускать уровни детализации для быстрой загрузки */
-  SKIP_LEVEL_OF_DETAIL: false,
+  SKIP_LEVEL_OF_DETAIL: true,   // Включено - критично для плоских tileset без иерархии
   /** Предпочитать листовые тайлы */
-  PREFER_LEAVES: false,
+  PREFER_LEAVES: true,  // Включено - загружает видимые тайлы первыми
+  /** Базовый размер экрана для расчёта LOD */
+  BASE_SCREEN_SPACE_ERROR: 1024,
+  /** Множитель для пропуска уровней */
+  SKIP_SCREEN_SPACE_ERROR_FACTOR: 16,
+  /** Пропускать уровни только для листьев */
+  SKIP_LEVELS: 1,
+  /** Загружать только видимые тайлы в начале */
+  IMMEDIATE_LOAD: true,
+  /** Показывать тайлы сразу, не дожидаясь полной загрузки */
+  PROGRESSIVE_RESOLUTION: true,
 } as const;
 
 // Настройки камеры

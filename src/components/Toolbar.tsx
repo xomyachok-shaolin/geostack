@@ -1,17 +1,26 @@
 'use client';
 
+import type { BasemapConfig, CesiumBasemapConfig, Model3D } from '@/lib/types';
 import { memo, useCallback, useState, useTransition } from 'react';
-import type { Model3D, BasemapConfig } from '@/lib/types';
+
+// Общий тип для basemap (работает и с MapLibre и с Cesium)
+type AnyBasemapConfig = BasemapConfig | CesiumBasemapConfig;
 
 interface ToolbarProps {
   models: Model3D[];
   currentModel: string;
   onModelChange: (url: string) => void;
-  basemaps: BasemapConfig[];
+  basemaps: AnyBasemapConfig[];
   currentBasemap: string;
   onBasemapChange: (id: string) => void;
   onResetView: () => void;
   isLoading: boolean;
+  // Terrain controls (optional for MapLibre)
+  terrainEnabled?: boolean;
+  onTerrainToggle?: () => void;
+  // Globe projection toggle
+  isGlobeProjection?: boolean;
+  onToggleProjection?: () => void;
 }
 
 function Toolbar({
@@ -23,6 +32,10 @@ function Toolbar({
   onBasemapChange,
   onResetView,
   isLoading,
+  terrainEnabled,
+  onTerrainToggle,
+  isGlobeProjection,
+  onToggleProjection,
 }: ToolbarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -107,6 +120,35 @@ function Toolbar({
               📍 К модели
             </button>
           </div>
+
+          {/* Terrain controls */}
+          {onTerrainToggle && (
+            <div className="control-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={terrainEnabled}
+                  onChange={onTerrainToggle}
+                  disabled={isDisabled}
+                />
+                <span>🏔️ 3D Рельеф</span>
+              </label>
+            </div>
+          )}
+
+          {/* Globe/Mercator projection toggle */}
+          {onToggleProjection && (
+            <div className="control-group">
+              <button 
+                onClick={onToggleProjection}
+                disabled={isDisabled}
+                className="projection-toggle"
+                title={isGlobeProjection ? 'Переключить на Mercator' : 'Переключить на Globe'}
+              >
+                {isGlobeProjection ? '🌍 Globe' : '🗺️ Mercator'}
+              </button>
+            </div>
+          )}
 
         </div>
       )}

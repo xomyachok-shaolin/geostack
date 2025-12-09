@@ -1,5 +1,3 @@
-import type * as Cesium from 'cesium';
-
 // Типы для моделей
 export interface Model3D {
   id: string;
@@ -14,11 +12,19 @@ export interface Model3D {
   heightOffset?: number;
 }
 
-// Типы для подложек
+// Типы для подложек (общий для MapLibre)
 export interface BasemapConfig {
   id: string;
   name: string;
-  type: 'ion' | 'osm' | 'google_satellite' | 'google_hybrid' | 'arcgis' | 'tms' | 'url' | 'none';
+  type: 'osm' | 'google_satellite' | 'google_hybrid' | 'tms' | 'local_ortho';
+  url?: string;
+}
+
+// Типы для подложек (расширенный для Cesium - legacy)
+export interface CesiumBasemapConfig {
+  id: string;
+  name: string;
+  type: 'ion' | 'osm' | 'google_satellite' | 'google_hybrid' | 'arcgis' | 'tms' | 'url' | 'none' | 'local_ortho';
   url?: string;
   assetId?: number;
   rectangle?: {
@@ -31,13 +37,28 @@ export interface BasemapConfig {
   maxZoom?: number;
 }
 
-// Типы для рельефа
-export interface TerrainConfig {
+// Слой ортофотоплана
+export interface OrthoLayer {
   id: string;
   name: string;
-  type: 'ion' | 'none';
-  url?: string;
-  assetId?: number;
+  url: string;
+  bounds: [number, number, number, number]; // [west, south, east, north]
+  minZoom?: number;
+  maxZoom?: number;
+}
+
+// Слой ортофотоплана для Cesium (legacy)
+export interface CesiumOrthoLayer {
+  id: string;
+  name: string;
+  url: string;
+  rectangle: {
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  };
+  priority?: number;
 }
 
 // Типы для камеры

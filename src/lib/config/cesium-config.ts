@@ -1,5 +1,5 @@
 import * as Cesium from 'cesium';
-import type { Model3D, BasemapConfig, TerrainConfig } from '../types';
+import type { Model3D, CesiumBasemapConfig, CesiumOrthoLayer } from '../types';
 
 /**
  * Инициализация Cesium с базовыми настройками
@@ -10,11 +10,11 @@ export function initCesium(): void {
   
   // Cesium Ion токен для доступа к базовым слоям и рельефу
   // Бесплатный токен можно получить на https://cesium.com/ion/tokens
-  Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiZGNhZjdkZC0xOTRmLTQ3N2YtODNlYi01ZWY3MzdkMDEyZDIiLCJpZCI6MTU1MjU3LCJpYXQiOjE2ODk4MzY5NjN9.ruoCeuKUThDO8ZKGcU-SufClp8A-bno50wtidTSafFI';
+  Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiNDZkN2UxYy1jZGEyLTQ4ZGYtYjQ1MS1hZmRiNzhmZDUyYjMiLCJpZCI6MzY2MjA3LCJpYXQiOjE3NjQ3NjA2MjZ9.EtOGdACo1NmGYx6tBkSJse65ROZ8H8MtttjSIeiUZKw';
   
-  // Оптимизации для производительности
-  Cesium.RequestScheduler.maximumRequests = 18;
-  Cesium.RequestScheduler.maximumRequestsPerServer = 6;
+  // Оптимизации для производительности - увеличены лимиты для параллельной загрузки
+  Cesium.RequestScheduler.maximumRequests = 50;         // Было 18 - увеличено для параллельной загрузки
+  Cesium.RequestScheduler.maximumRequestsPerServer = 18; // Было 6 - HTTP/2 поддерживает много параллельных запросов
 }
 
 /**
@@ -44,19 +44,18 @@ export const AVAILABLE_MODELS: Model3D[] = [
 ];
 
 /**
- * Доступные подложки карты
+ * Доступные подложки карты (Cesium)
  */
-export const AVAILABLE_BASEMAPS: BasemapConfig[] = [
+export const AVAILABLE_BASEMAPS: CesiumBasemapConfig[] = [
+  {
+    id: 'local_ortho',
+    name: 'Локальные ортофото',
+    type: 'local_ortho',
+  },
   {
     id: 'arcgis',
     name: 'ArcGIS Спутник',
     type: 'arcgis',
-  },
-  {
-    id: 'ion_satellite',
-    name: 'Cesium Ion Спутник',
-    type: 'ion',
-    assetId: 2, // Bing Maps Aerial
   },
   {
     id: 'google_satellite',
@@ -76,40 +75,63 @@ export const AVAILABLE_BASEMAPS: BasemapConfig[] = [
     type: 'osm',
     url: 'https://tile.openstreetmap.org/',
   },
-] as const;
+];
 
 /**
- * Доступные варианты рельефа
+ * Конфигурация локальных ортофотопланов (Cesium)
+ * Слои отображаются в порядке приоритета (выше priority = сверху)
  */
-export const TERRAIN_OPTIONS: TerrainConfig[] = [
+export const LOCAL_ORTHOPHOTOS: CesiumOrthoLayer[] = [
+  // Районы (нижний слой, покрывают большую площадь)
   {
-    id: 'none',
-    name: 'Без рельефа',
-    type: 'none',
+    id: 'krasnoarmeiskiy-rayon',
+    name: 'Красноармейский район',
+    url: '/api/ortho/krasnoarmeiskiy-rayon/{z}/{x}/{y}.png',
+    rectangle: {
+      west: 46.94577286,
+      south: 55.66376807,
+      east: 47.36972165,
+      north: 55.86825217,
+    },
+    priority: 50,
   },
-
   {
-    id: 'ion_world',
-    name: 'Cesium World Terrain',
-    type: 'ion',
-    assetId: 1, // Cesium World Terrain
+    id: 'kanashskiy-rayon',
+    name: 'Канашский район',
+    url: '/api/ortho/kanashskiy-rayon/{z}/{x}/{y}.png',
+    rectangle: {
+      west: 47.19531000,
+      south: 55.34957952,
+      east: 47.65664078,
+      north: 55.68905500,
+    },
+    priority: 50,
   },
-] as const;
+  // Детальные ортофото (верхний слой, перекрывает район при высоком зуме)
+  {
+    id: 'krasnoarmeiskoe',
+    name: 'с. Красноармейское (детальное)',
+    url: '/api/ortho/krasnoarmeiskoe/{z}/{x}/{y}.png',
+    rectangle: {
+      west: 47.1472,
+      south: 55.7552,
+      east: 47.1888,
+      north: 55.7873,
+    },
+    priority: 100,
+  },
+  {
+    id: 'kanash',
+    name: 'г. Канаш (детальное)',
+    url: '/api/ortho/kanash/{z}/{x}/{y}.png',
+    rectangle: {
+      west: 47.4194,
+      south: 55.4662,
+      east: 47.5667,
+      north: 55.5482,
+    },
+    priority: 100,
+  },
+];
 
-/**
- * Координаты покрытия локального рельефа
- */
-export const LOCAL_TERRAIN_BOUNDS = {
-  krasnoarmeiskoe: {
-    west: 47.0,
-    south: 55.6,
-    east: 47.3,
-    north: 55.85,
-  },
-  kanash: {
-    west: 47.35,
-    south: 55.4,
-    east: 47.65,
-    north: 55.6,
-  },
-} as const;
+

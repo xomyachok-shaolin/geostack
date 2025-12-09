@@ -15,6 +15,15 @@ public/models/
 # Source data (GeoTIFF files)
 data/terrain/
 data/models/
+data/ortho/
+
+# Generated imagery tiles
+public/imagery/
+
+# Temporary processing files
+tmp/*.tif
+tmp/*.vrt
+tmp/Красноармейское*
 
 # Misc
 .DS_Store
