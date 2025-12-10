@@ -12,9 +12,9 @@ export function initCesium(): void {
   // Бесплатный токен можно получить на https://cesium.com/ion/tokens
   Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiNDZkN2UxYy1jZGEyLTQ4ZGYtYjQ1MS1hZmRiNzhmZDUyYjMiLCJpZCI6MzY2MjA3LCJpYXQiOjE3NjQ3NjA2MjZ9.EtOGdACo1NmGYx6tBkSJse65ROZ8H8MtttjSIeiUZKw';
   
-  // Оптимизации для производительности - увеличены лимиты для параллельной загрузки
-  Cesium.RequestScheduler.maximumRequests = 50;         // Было 18 - увеличено для параллельной загрузки
-  Cesium.RequestScheduler.maximumRequestsPerServer = 18; // Было 6 - HTTP/2 поддерживает много параллельных запросов
+  // Оптимизации для производительности - максимальная параллельная загрузка
+  Cesium.RequestScheduler.maximumRequests = 100;         // Увеличено до 100 для быстрой загрузки
+  Cesium.RequestScheduler.maximumRequestsPerServer = 30; // HTTP/2 поддерживает много параллельных запросов
 }
 
 /**
@@ -24,7 +24,7 @@ export const AVAILABLE_MODELS: Model3D[] = [
   {
     id: 'krasnoarmeiskoe',
     name: 'Красноармейское',
-    url: '/models/krasnoarmeiskoe/tileset.json',
+    url: '/api/models/krasnoarmeiskoe/tileset.json',
     center: {
       longitude: 47.15,
       latitude: 55.72,
@@ -34,7 +34,7 @@ export const AVAILABLE_MODELS: Model3D[] = [
   {
     id: 'kanash',
     name: 'Канаш',
-    url: '/models/kanash/tileset.json',
+    url: '/api/models/kanash/tileset.json',
     center: {
       longitude: 47.49,
       latitude: 55.51,

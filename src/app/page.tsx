@@ -2,15 +2,15 @@
 
 import dynamic from 'next/dynamic';
 
-const MapLibreViewer = dynamic(() => import('@/components/MapLibreViewer'), {
+const CesiumViewer = dynamic(() => import('@/components/CesiumViewer'), {
   ssr: false,
-  loading: () => <div className="loading">Загрузка 3D карты...</div>,
+  loading: () => <div className="loading">Загрузка Cesium...</div>,
 });
 
 export default function Home() {
   return (
     <div className="viewer-container">
-      <MapLibreViewer />
+      <CesiumViewer />
     </div>
   );
 }

@@ -95,7 +95,7 @@ export async function GET(
       return new NextResponse(processedJson, {
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=86400',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Access-Control-Allow-Origin': '*',
         },
       });

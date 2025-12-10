@@ -11,6 +11,16 @@ import { createImageryProvider } from '@/lib/utils/imagery-providers';
 import InfoPanel from './InfoPanel';
 import Toolbar from './Toolbar';
 
+// КРИТИЧНО: Исправляем старые URL в localStorage ДО инициализации компонента
+if (typeof window !== 'undefined') {
+  const saved = localStorage.getItem('geostack_model');
+  if (saved && saved.startsWith('/models/') && !saved.startsWith('/api/')) {
+    const correctedUrl = saved.replace('/models/', '/api/models/');
+    console.log('🔧 Fixing old URL in localStorage:', saved, '->', correctedUrl);
+    localStorage.setItem('geostack_model', correctedUrl);
+  }
+}
+
 // Хук для управления ресайзом с дебаунсом
 function useResizeObserver(
   containerRef: React.RefObject<HTMLDivElement | null>,
@@ -46,8 +56,15 @@ export default function CesiumViewer() {
   const [currentModel, setCurrentModel] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('geostack_model');
+      
+      // Проверяем что сохраненный URL валиден
       if (saved && AVAILABLE_MODELS.some(m => m.url === saved)) {
         return saved;
+      }
+      
+      // Если ничего не подошло, очищаем и используем первую модель
+      if (saved) {
+        localStorage.removeItem('geostack_model');
       }
     }
     return AVAILABLE_MODELS[0]?.url || '';
@@ -72,9 +89,11 @@ export default function CesiumViewer() {
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
   const [isInfoPanelVisible, setIsInfoPanelVisible] = useState(false);
 
-  // Сохраняем настройки в localStorage при изменении
+  // Сохраняем настройки в localStorage при изменении (только один раз)
+  const savedModelRef = useRef(currentModel);
   useEffect(() => {
-    if (currentModel) {
+    if (currentModel && currentModel !== savedModelRef.current) {
+      savedModelRef.current = currentModel;
       localStorage.setItem('geostack_model', currentModel);
     }
   }, [currentModel]);
@@ -228,17 +247,27 @@ export default function CesiumViewer() {
       targetFrameRate: 60,
       useBrowserRecommendedResolution: true,
       msaaSamples: RENDERING_DEFAULTS.MSAA_SAMPLES,
+      // Дополнительные оптимизации
+      orderIndependentTranslucency: false, // Отключаем для производительности
+      contextOptions: {
+        webgl: {
+          alpha: false, // Непрозрачный фон быстрее
+          powerPreference: 'high-performance',
+        },
+      },
     });
 
-    // Настройка камеры
+    // Настройка камеры с оптимизациями
     const controller = viewer.scene.screenSpaceCameraController;
     controller.enableRotate = true;
-    controller.enableTranslate = false; // Отключаем смещение камеры, чтобы глобус был по центру
+    controller.enableTranslate = false;
     controller.enableZoom = true;
-    controller.enableTilt = true; // Наклон камеры
+    controller.enableTilt = true;
     controller.enableLook = false;
     controller.minimumZoomDistance = CAMERA_DEFAULTS.MIN_ZOOM_DISTANCE;
     controller.maximumZoomDistance = CAMERA_DEFAULTS.MAX_ZOOM_DISTANCE;
+    controller.inertiaZoom = 0.9; // Плавное зумирование
+    controller.inertiaSpin = 0.9; // Плавное вращение
     
     // Настраиваем управление наклоном: средняя кнопка или Ctrl+ПКМ
     controller.tiltEventTypes = [
@@ -250,13 +279,14 @@ export default function CesiumViewer() {
       },
     ];
 
-    // Оптимизации сцены
+    // Оптимизации сцены для максимальной производительности
     const scene = viewer.scene;
-    scene.fog.enabled = true;
-    scene.fog.density = 0.0001;
+    scene.fog.enabled = false; // Отключаем туман для производительности
     scene.globe.enableLighting = false;
-    scene.globe.depthTestAgainstTerrain = true;
-    
+    scene.globe.depthTestAgainstTerrain = false; // Включим позже при загрузке terrain
+    scene.globe.tileCacheSize = 1000; // Увеличиваем кэш тайлов
+    scene.logarithmicDepthBuffer = true; // Улучшает точность глубины
+
     // Устанавливаем начальную позицию камеры
     viewer.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(47.17, 55.77, 15000000),
@@ -323,13 +353,19 @@ export default function CesiumViewer() {
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // Обработчик наведения для изменения курсора
+    // Обработчик наведения с троттлингом для производительности
+    let lastMouseMoveTime = 0;
+    const MOUSE_MOVE_THROTTLE = 100; // мс
+    
     handler.setInputAction((movement: { endPosition: Cesium.Cartesian2 }) => {
+      const now = Date.now();
+      if (now - lastMouseMoveTime < MOUSE_MOVE_THROTTLE) return;
+      lastMouseMoveTime = now;
+      
       const pickedObject = scene.pick(movement.endPosition);
       const container = viewer.container as HTMLElement;
       
       if (Cesium.defined(pickedObject) && (pickedObject.content || pickedObject.primitive)) {
-        // Меняем курсор при наведении на здание
         container.style.cursor = 'pointer';
       } else {
         container.style.cursor = 'default';
@@ -396,21 +432,9 @@ export default function CesiumViewer() {
   }, [currentBasemap]);
 
   // Загрузка Cesium World Terrain
-  // ВРЕМЕННО ОТКЛЮЧЕНО для диагностики - модели используют абсолютные высоты
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
-
-    // Отключаем terrain для тестирования - используем эллипсоид
-    // Это поможет понять, проблема в terrain или в самих моделях
-    const USE_TERRAIN = false; // Переключите на true для включения рельефа
-    
-    if (!USE_TERRAIN) {
-      console.log('🌍 Using Ellipsoid terrain (no elevation)');
-      viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
-      viewer.scene.requestRender();
-      return;
-    }
 
     let cancelled = false;
 
@@ -421,11 +445,15 @@ export default function CesiumViewer() {
         if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
         
         viewerRef.current.terrainProvider = terrain;
+        viewerRef.current.scene.globe.depthTestAgainstTerrain = true; // Включаем после загрузки terrain
         viewerRef.current.scene.requestRender();
-        console.log('Cesium World Terrain loaded');
       } catch (err) {
         if (cancelled) return;
-        console.error('Error loading terrain:', err);
+        console.error('Failed to load Cesium World Terrain:', err);
+        // Fallback на эллипсоид при ошибке
+        if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+          viewerRef.current.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+        }
       }
     };
 
@@ -490,62 +518,17 @@ export default function CesiumViewer() {
         const boundingSphere = tileset.boundingSphere;
         const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
 
-        // Отладка: информация о модели
-        console.log('=== TILESET DEBUG INFO ===');
-        console.log('Bounding sphere center (ECEF):', boundingSphere.center.x, boundingSphere.center.y, boundingSphere.center.z);
-        console.log('Bounding sphere radius:', boundingSphere.radius);
-        console.log('Center height (ellipsoidal):', cartographic.height);
-        
-        // Проверяем текущий terrain и его высоту в точке модели
-        const terrainProvider = viewerRef.current.terrainProvider;
-        if (terrainProvider && !(terrainProvider instanceof Cesium.EllipsoidTerrainProvider)) {
-          try {
-            const positions = await Cesium.sampleTerrainMostDetailed(terrainProvider, [
-              Cesium.Cartographic.clone(cartographic)
-            ]);
-            console.log('Terrain height at model center:', positions[0].height);
-            console.log('Model height above terrain:', cartographic.height - positions[0].height);
-          } catch (e) {
-            console.log('Could not sample terrain:', e);
-          }
-        } else {
-          console.log('No terrain provider or using ellipsoid');
-        }
-
         viewerRef.current.scene.primitives.add(tileset);
         tilesetRef.current = tileset;
-        
-        // Дополнительная отладка после добавления в сцену
-        console.log('Tileset added to scene. Ready:', tileset.ready);
-        console.log('Tileset show:', tileset.show);
-        console.log('Tileset asset version:', tileset.asset?.version);
-        console.log('=== END DEBUG INFO ===');
 
-        // Подписываемся на события загрузки тайлов
-        const removeLoadProgress = tileset.loadProgress.addEventListener((numberOfPendingRequests, numberOfTilesProcessing) => {
-          if (numberOfPendingRequests > 0 || numberOfTilesProcessing > 0) {
-            setLoadingMessage(`Загрузка тайлов: ${numberOfPendingRequests} в очереди, ${numberOfTilesProcessing} обрабатывается`);
-          }
-        });
-        
         // Подписываемся на ошибки загрузки тайлов
         const removeTileFailed = tileset.tileFailed.addEventListener((error: { url?: string; message?: string }) => {
-          console.error('❌ Tile failed to load:', error.url, error.message);
-        });
-        
-        // Подписываемся на успешную загрузку тайлов
-        const removeTileLoad = tileset.tileLoad.addEventListener((tile: Cesium.Cesium3DTile) => {
-          console.log('✅ Tile loaded:', tile.contentReady ? 'content ready' : 'loading');
+          console.error('Tile failed:', error.url);
         });
 
-        // Логируем информацию о модели (используем уже объявленные переменные)
-        console.log('Tileset loaded:', currentModel);
-        console.log('Center (lon, lat, h):', 
-          Cesium.Math.toDegrees(cartographic.longitude).toFixed(4),
-          Cesium.Math.toDegrees(cartographic.latitude).toFixed(4),
-          cartographic.height.toFixed(1)
-        );
-        console.log('Bounding sphere radius:', boundingSphere.radius.toFixed(1));
+        // Логируем базовую информацию
+        const modelName = currentModel.split('/').pop();
+        console.log(`✅ ${modelName} loaded at ${Cesium.Math.toDegrees(cartographic.longitude).toFixed(2)}°, ${Cesium.Math.toDegrees(cartographic.latitude).toFixed(2)}°`);
 
         // Перелёт к модели
         flyToTileset(tileset);
