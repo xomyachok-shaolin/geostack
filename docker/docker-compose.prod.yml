@@ -2,6 +2,12 @@ version: '3.8'
 
 # Production конфигурация для сервера geokiosk@192.168.70.220
 # Nginx проксирует с http://geokiosk.ru/ на порт 5000
+# 
+# Деплой:
+# 1. Собрать образ: docker build -t geostack:latest .
+# 2. Сохранить: docker save geostack:latest | gzip > geostack.tar.gz
+# 3. На сервере: gunzip -c geostack.tar.gz | docker load
+# 4. Запустить: docker compose -f docker-compose.prod.yml up -d
 
 services:
   geostack:
@@ -11,11 +17,20 @@ services:
     ports:
       - "5000:3000"  # Nginx проксирует с geokiosk.ru на :5000
     volumes:
-      # Монтируем 3D модели из хоста
-      - ./data/models:/app/public/models:ro
+      # Монтируем данные из хранилища (модели, ортофото и т.д.)
+      - /media/storage/data/models:/app/data/models:ro
+      - /media/storage/data/ortho:/app/data/ortho:ro
     environment:
       - NODE_ENV=production
       - NODE_TLS_REJECT_UNAUTHORIZED=0
+      # Оптимизация Node.js для производительности
+      - NODE_OPTIONS=--max-old-space-size=2048
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
@@ -24,6 +39,11 @@ services:
       start_period: 40s
     networks:
       - outside
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   outside:

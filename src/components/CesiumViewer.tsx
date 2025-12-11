@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { AVAILABLE_BASEMAPS, AVAILABLE_MODELS, initCesium } from '@/lib/config/cesium-config';
 import type { FlyToOptions } from '@/lib/types';
-import { CAMERA_DEFAULTS, RENDERING_DEFAULTS, TILESET_DEFAULTS, TIMING } from '@/lib/utils/constants';
+import { CAMERA_DEFAULTS, RENDERING_DEFAULTS, TILESET_DEFAULTS, TIMING, LIMITS } from '@/lib/utils/constants';
 import { createImageryProvider } from '@/lib/utils/imagery-providers';
 import InfoPanel from './InfoPanel';
 import Toolbar from './Toolbar';
@@ -51,6 +51,8 @@ export default function CesiumViewer() {
   const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
   const imageryLayersRef = useRef<Cesium.ImageryLayer[]>([]);
   const selectedMarkerRef = useRef<Cesium.Entity | null>(null);
+  const initialFlyDoneRef = useRef<boolean>(false);
+  const currentModelRef = useRef<string>('');
 
   // Загружаем сохранённые настройки из localStorage
   const [currentModel, setCurrentModel] = useState(() => {
@@ -202,16 +204,26 @@ export default function CesiumViewer() {
   // Инициализация viewer
   useEffect(() => {
     if (!containerRef.current) return;
+    
+    // Если viewer уже создан, не создаём снова
+    if (viewerRef.current) return;
 
     // Ждём пока контейнер получит размеры
     const container = containerRef.current;
     if (container.clientWidth === 0 || container.clientHeight === 0) {
       // Контейнер ещё не имеет размеров, ждём
+      let checkCount = 0;
+      const maxChecks = 100; // Максимум 5 секунд ожидания
       const checkSize = setInterval(() => {
+        checkCount++;
         if (container.clientWidth > 0 && container.clientHeight > 0) {
           clearInterval(checkSize);
-          // Перезапускаем эффект
-          setIsLoading(true);
+          // Форсируем перезапуск через ref
+          viewerRef.current = null;
+          window.dispatchEvent(new Event('resize'));
+        } else if (checkCount >= maxChecks) {
+          clearInterval(checkSize);
+          console.error('Container never got dimensions');
         }
       }, 50);
       return () => clearInterval(checkSize);
@@ -404,10 +416,12 @@ export default function CesiumViewer() {
         if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
         
         if (providers) {
-          // Если это массив провайдеров (multi_ortho)
+          // Если это массив провайдеров (local_ortho / multi_ortho)
           if (Array.isArray(providers)) {
-            providers.forEach(provider => {
+            providers.forEach((provider, index) => {
               const layer = viewerRef.current!.imageryLayers.addImageryProvider(provider);
+              // Все слои полностью непрозрачные - прозрачность обеспечивается PNG тайлами
+              layer.alpha = 1.0;
               imageryLayersRef.current.push(layer);
             });
           } else {
@@ -472,6 +486,10 @@ export default function CesiumViewer() {
     let cancelled = false;
 
     const loadTileset = async () => {
+      // Даём время ортофото начать загрузку (они важнее)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      if (cancelled) return;
+      
       setIsLoading(true);
       setLoadingMessage('Загрузка 3D модели...');
       setError(null);
@@ -504,6 +522,11 @@ export default function CesiumViewer() {
           foveatedConeSize: 0.3,  // Узкий конус для фокуса
           foveatedMinimumScreenSpaceErrorRelaxation: 0.0,
           progressiveResolutionHeightFraction: 0.5, // Показывать тайлы раньше
+          // Ограничение параллельных запросов чтобы не блокировать ортофото
+          maximumSimultaneousTileLoads: LIMITS.MAX_3D_MODEL_REQUESTS,
+          // Низкий приоритет загрузки - ортофото важнее
+          preloadWhenHidden: false,
+          preloadFlightDestinations: false,
         };
 
         const tileset = await Cesium.Cesium3DTileset.fromUrl(currentModel, tilesetOptions);
@@ -522,7 +545,7 @@ export default function CesiumViewer() {
         tilesetRef.current = tileset;
 
         // Подписываемся на ошибки загрузки тайлов
-        const removeTileFailed = tileset.tileFailed.addEventListener((error: { url?: string; message?: string }) => {
+        tileset.tileFailed.addEventListener((error: { url?: string; message?: string }) => {
           console.error('Tile failed:', error.url);
         });
 
@@ -530,13 +553,12 @@ export default function CesiumViewer() {
         const modelName = currentModel.split('/').pop();
         console.log(`✅ ${modelName} loaded at ${Cesium.Math.toDegrees(cartographic.longitude).toFixed(2)}°, ${Cesium.Math.toDegrees(cartographic.latitude).toFixed(2)}°`);
 
-        // Перелёт к модели
-        flyToTileset(tileset);
-
-        // Убираем обработчик при размонтировании
-        return () => {
-          removeLoadProgress();
-        };
+        // Перелёт к модели только если это первая загрузка или модель изменилась
+        if (!initialFlyDoneRef.current || currentModelRef.current !== currentModel) {
+          currentModelRef.current = currentModel;
+          initialFlyDoneRef.current = true;
+          flyToTileset(tileset);
+        }
         
       } catch (err) {
         if (cancelled) return;
@@ -561,7 +583,8 @@ export default function CesiumViewer() {
     return () => {
       cancelled = true;
     };
-  }, [currentModel, flyToTileset]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentModel]);
 
   // Сброс вида
   const handleResetView = useCallback(() => {

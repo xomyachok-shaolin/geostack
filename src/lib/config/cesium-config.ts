@@ -12,9 +12,13 @@ export function initCesium(): void {
   // Бесплатный токен можно получить на https://cesium.com/ion/tokens
   Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiNDZkN2UxYy1jZGEyLTQ4ZGYtYjQ1MS1hZmRiNzhmZDUyYjMiLCJpZCI6MzY2MjA3LCJpYXQiOjE3NjQ3NjA2MjZ9.EtOGdACo1NmGYx6tBkSJse65ROZ8H8MtttjSIeiUZKw';
   
-  // Оптимизации для производительности - максимальная параллельная загрузка
-  Cesium.RequestScheduler.maximumRequests = 100;         // Увеличено до 100 для быстрой загрузки
-  Cesium.RequestScheduler.maximumRequestsPerServer = 30; // HTTP/2 поддерживает много параллельных запросов
+  // Оптимизации для производительности
+  // Ограничиваем параллельные запросы чтобы ортофото грузились быстрее
+  Cesium.RequestScheduler.maximumRequests = 24;          // Общий лимит запросов
+  Cesium.RequestScheduler.maximumRequestsPerServer = 12; // Лимит на сервер
+  
+  // Приоритизация - сначала загружаем видимые тайлы
+  Cesium.RequestScheduler.requestsByServer = {};
 }
 
 /**
@@ -80,56 +84,65 @@ export const AVAILABLE_BASEMAPS: CesiumBasemapConfig[] = [
 /**
  * Конфигурация локальных ортофотопланов (Cesium)
  * Слои отображаются в порядке приоритета (выше priority = сверху)
+ * Районные слои показываются только до zoom 14, дальше только детальные
  */
 export const LOCAL_ORTHOPHOTOS: CesiumOrthoLayer[] = [
-  // Районы (нижний слой, покрывают большую площадь)
+  // Районы (готовые тайлы) - ограничены maxZoom чтобы не перекрывать детальные
   {
     id: 'krasnoarmeiskiy-rayon',
     name: 'Красноармейский район',
-    url: '/api/ortho/krasnoarmeiskiy-rayon/{z}/{x}/{y}.png',
+    url: '/api/ortho/krasnoarmeiskiy-rayon/{z}/{x}/{y}.webp',
     rectangle: {
       west: 46.94577286,
       south: 55.66376807,
       east: 47.36972165,
       north: 55.86825217,
     },
+    minZoom: 5,
+    maxZoom: 14,  // Ограничиваем - дальше детальные слои
     priority: 50,
   },
   {
     id: 'kanashskiy-rayon',
     name: 'Канашский район',
-    url: '/api/ortho/kanashskiy-rayon/{z}/{x}/{y}.png',
+    url: '/api/ortho/kanashskiy-rayon/{z}/{x}/{y}.webp',
     rectangle: {
       west: 47.19531000,
       south: 55.34957952,
       east: 47.65664078,
       north: 55.68905500,
     },
+    minZoom: 5,
+    maxZoom: 14,  // Ограничиваем - дальше детальные слои
     priority: 50,
   },
-  // Детальные ортофото (верхний слой, перекрывает район при высоком зуме)
+  // Детальные ортофото населённых пунктов (с альфа-каналом)
   {
     id: 'krasnoarmeiskoe',
     name: 'с. Красноармейское (детальное)',
-    url: '/api/ortho/krasnoarmeiskoe/{z}/{x}/{y}.png',
+    url: '/api/ortho/krasnoarmeiskoe/{z}/{x}/{y}.webp',
     rectangle: {
       west: 47.1472,
       south: 55.7552,
       east: 47.1888,
       north: 55.7873,
     },
+    minZoom: 10,
+    maxZoom: 21,
     priority: 100,
   },
   {
     id: 'kanash',
     name: 'г. Канаш (детальное)',
-    url: '/api/ortho/kanash/{z}/{x}/{y}.png',
+    url: '/api/ortho/kanash/{z}/{x}/{y}.webp',
     rectangle: {
       west: 47.4194,
       south: 55.4662,
       east: 47.5667,
       north: 55.5482,
     },
+    minZoom: 10,
+    maxZoom: 21,
     priority: 100,
   },
 ];

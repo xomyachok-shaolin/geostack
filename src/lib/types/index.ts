@@ -58,6 +58,8 @@ export interface CesiumOrthoLayer {
     east: number;
     north: number;
   };
+  minZoom?: number;
+  maxZoom?: number;
   priority?: number;
 }
 

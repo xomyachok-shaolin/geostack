@@ -14,10 +14,11 @@ const ORTHO_METADATA: Record<string, {
   folder: string; // папка с тайлами
   name: string;
   priority: number; // приоритет слоя (выше = сверху)
+  tileFormat: 'xyz' | 'tms'; // формат координат Y
   useTitiler?: boolean; // использовать TiTiler для раздачи
   tiffFile?: string; // имя TIFF файла для TiTiler (по умолчанию source.tif)
 }> = {
-  // Детальные ортофото населённых пунктов (высший приоритет) - через TiTiler
+  // Детальные ортофото населённых пунктов (высший приоритет) - в TMS формате
   krasnoarmeiskoe: {
     bounds: [47.1472, 55.7552, 47.1888, 55.7873],
     minZoom: 10,
@@ -25,8 +26,8 @@ const ORTHO_METADATA: Record<string, {
     folder: 'krasnoarmeiskoe',
     name: 'с. Красноармейское (детальное)',
     priority: 100,
-    useTitiler: true, // Раздача из TIFF через TiTiler
-    tiffFile: 'source.tif',
+    tileFormat: 'tms', // gdal2tiles по умолчанию генерирует TMS
+    useTitiler: false,
   },
   kanash: {
     bounds: [47.4194, 55.4662, 47.5667, 55.5482],
@@ -35,10 +36,10 @@ const ORTHO_METADATA: Record<string, {
     folder: 'kanash',
     name: 'г. Канаш (детальное)',
     priority: 100,
-    useTitiler: true, // Раздача из TIFF через TiTiler
-    tiffFile: 'source.tif',
+    tileFormat: 'tms', // gdal2tiles по умолчанию генерирует TMS
+    useTitiler: false,
   },
-  // Тайлы районов (средний приоритет)
+  // Тайлы районов (средний приоритет) - в TMS формате
   'krasnoarmeiskiy-rayon': {
     bounds: [46.94577286, 55.66376807, 47.36972165, 55.86825217],
     minZoom: 10,
@@ -46,6 +47,8 @@ const ORTHO_METADATA: Record<string, {
     folder: 'krasnoarmeiskiy-rayon',
     name: 'Красноармейский район',
     priority: 50,
+    tileFormat: 'tms', // Исходные тайлы в TMS формате
+    useTitiler: false,
   },
   'kanashskiy-rayon': {
     bounds: [47.19531000, 55.34957952, 47.65664078, 55.68905500],
@@ -54,6 +57,8 @@ const ORTHO_METADATA: Record<string, {
     folder: 'kanashskiy-rayon',
     name: 'Канашский район',
     priority: 50,
+    tileFormat: 'tms', // Исходные тайлы в TMS формате
+    useTitiler: false,
   },
 };
 
@@ -118,16 +123,18 @@ export async function GET(
 
   const z = parseInt(pathSegments[1], 10);
   const x = parseInt(pathSegments[2], 10);
-  // Убираем .png из y
-  const yStr = pathSegments[3].replace('.png', '');
+  // Убираем расширение (.png или .webp) из y
+  const yStr = pathSegments[3].replace(/\.(png|webp)$/, '');
   const yXyz = parseInt(yStr, 10);
 
   if (isNaN(z) || isNaN(x) || isNaN(yXyz)) {
     return NextResponse.json({ error: 'Invalid tile coordinates' }, { status: 400 });
   }
 
-  // Конвертируем Y из XYZ в TMS
-  const yTms = xyzToTms(yXyz, z);
+  // Конвертируем Y координату в зависимости от формата тайлов
+  // XYZ (Google/OSM) - Y сверху вниз
+  // TMS - Y снизу вверх
+  const yFile = regionMeta.tileFormat === 'tms' ? xyzToTms(yXyz, z) : yXyz;
 
   // Если регион использует TiTiler — проксируем запрос
   if (regionMeta.useTitiler) {
@@ -165,7 +172,7 @@ export async function GET(
     
     // Прозрачный PNG если TiTiler недоступен
     const transparentPng = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg==',
       'base64'
     );
     return new NextResponse(transparentPng, {
@@ -177,28 +184,43 @@ export async function GET(
     });
   }
 
-  // Путь к файлу тайла (для регионов с готовыми PNG)
-  const tilePath = path.join(
+  // Пути к файлам тайлов - пробуем WebP, затем PNG
+  const baseDir = path.join(
     process.cwd(),
     'data',
     'ortho',
     regionMeta.folder,
     z.toString(),
-    x.toString(),
-    `${yTms}.png`
+    x.toString()
   );
+  
+  const webpPath = path.join(baseDir, `${yFile}.webp`);
+  const pngPath = path.join(baseDir, `${yFile}.png`);
 
-  // Проверяем существование файла
-  if (!existsSync(tilePath)) {
-    // Возвращаем прозрачный PNG 256x256 для отсутствующих тайлов
-    const transparentPng = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  // Debug: логируем координаты
+  console.log(`[ortho] ${region} z=${z} x=${x} yXyz=${yXyz} -> yFile=${yFile} (${regionMeta.tileFormat})`);
+  console.log(`[ortho] webp=${existsSync(webpPath)} png=${existsSync(pngPath)}`);
+
+  // Проверяем WebP, затем PNG
+  let tilePath: string;
+  let contentType: string;
+  
+  if (existsSync(webpPath)) {
+    tilePath = webpPath;
+    contentType = 'image/webp';
+  } else if (existsSync(pngPath)) {
+    tilePath = pngPath;
+    contentType = 'image/png';
+  } else {
+    // Возвращаем прозрачный WebP 1x1 для отсутствующих тайлов
+    const transparentWebp = Buffer.from(
+      'UklGRlYAAABXRUJQVlA4IEoAAADQAQCdASoBAAEAAUAmJYgCdAEO/hOMAAD++O9u/rv6D+gPsCAAAPnke8j3ke8j3j/d+8hUkNRM+AAAAAAAAAAAAA==',
       'base64'
     );
-    return new NextResponse(transparentPng, {
+    return new NextResponse(transparentWebp, {
       status: 200,
       headers: {
-        'Content-Type': 'image/png',
+        'Content-Type': 'image/webp',
         'Cache-Control': 'public, max-age=86400',
       },
     });
@@ -210,7 +232,7 @@ export async function GET(
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'image/png',
+        'Content-Type': contentType,
         'Cache-Control': 'public, max-age=604800', // Кэшируем на неделю
         'Access-Control-Allow-Origin': '*',
       },

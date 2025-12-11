@@ -8,3 +8,9 @@ npm-debug.log
 README.md
 .env*.local
 *.md
+
+# Данные монтируются отдельно, не включать в образ
+data/
+tmp/
+scripts/
+docker/

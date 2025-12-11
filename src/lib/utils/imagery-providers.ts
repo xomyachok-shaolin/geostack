@@ -71,8 +71,8 @@ export async function createImageryProvider(
       const sortedOrthos = [...LOCAL_ORTHOPHOTOS].sort((a, b) => 
         (a.priority ?? 0) - (b.priority ?? 0)
       );
-      return sortedOrthos.map(ortho => 
-        new Cesium.UrlTemplateImageryProvider({
+      return sortedOrthos.map(ortho => {
+        const provider = new Cesium.UrlTemplateImageryProvider({
           url: ortho.url,
           rectangle: Cesium.Rectangle.fromDegrees(
             ortho.rectangle.west,
@@ -80,8 +80,15 @@ export async function createImageryProvider(
             ortho.rectangle.east,
             ortho.rectangle.north
           ),
-        })
-      );
+          minimumLevel: ortho.minZoom ?? 5,
+          maximumLevel: ortho.maxZoom ?? 19,
+          hasAlphaChannel: true, // Важно для прозрачности отсутствующих тайлов
+          enablePickFeatures: false, // Отключаем для производительности
+        });
+        // Добавляем флаг для районных слоёв (нужен для colorToAlpha)
+        (provider as any)._isDistrictLayer = (ortho.priority ?? 0) < 100;
+        return provider;
+      });
 
     case 'none':
       return null;
