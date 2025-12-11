@@ -421,7 +421,7 @@ export default function CesiumViewer() {
     };
   }, [currentBasemap]);
 
-  // Загрузка AWS Terrain (публичный, без Ion токена)
+  // Загрузка рельефа из AWS Terrarium (публичный, без авторизации)
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
@@ -430,20 +430,22 @@ export default function CesiumViewer() {
 
     const loadTerrain = async () => {
       try {
-        // AWS Terrain - публичный доступ, не требует Ion токена
-        const terrain = await Cesium.createWorldTerrainAsync({
-          requestWaterMask: true,
-          requestVertexNormals: true,
-        });
+        // AWS Terrarium tiles - публичный источник рельефа
+        const terrain = await Cesium.CesiumTerrainProvider.fromUrl(
+          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+          {
+            credit: 'Terrain tiles from AWS Terrarium',
+          }
+        );
         
         if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
         
         viewerRef.current.terrainProvider = terrain;
-        viewerRef.current.scene.globe.depthTestAgainstTerrain = true; // Включаем после загрузки terrain
+        viewerRef.current.scene.globe.depthTestAgainstTerrain = true;
         viewerRef.current.scene.requestRender();
       } catch (err) {
         if (cancelled) return;
-        console.error('Failed to load AWS terrain:', err);
+        console.error('Failed to load terrain:', err);
         // Fallback на эллипсоид при ошибке
         if (viewerRef.current && !viewerRef.current.isDestroyed()) {
           viewerRef.current.terrainProvider = new Cesium.EllipsoidTerrainProvider();
