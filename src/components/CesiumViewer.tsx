@@ -201,33 +201,42 @@ export default function CesiumViewer() {
 
   useResizeObserver(containerRef, handleResize);
 
-  // Инициализация viewer
+  // Состояние готовности контейнера
+  const [containerReady, setContainerReady] = useState(false);
+
+  // Проверка размеров контейнера
   useEffect(() => {
     if (!containerRef.current) return;
     
-    // Если viewer уже создан, не создаём снова
-    if (viewerRef.current) return;
+    const container = containerRef.current;
+    if (container.clientWidth > 0 && container.clientHeight > 0) {
+      setContainerReady(true);
+      return;
+    }
 
     // Ждём пока контейнер получит размеры
-    const container = containerRef.current;
-    if (container.clientWidth === 0 || container.clientHeight === 0) {
-      // Контейнер ещё не имеет размеров, ждём
-      let checkCount = 0;
-      const maxChecks = 100; // Максимум 5 секунд ожидания
-      const checkSize = setInterval(() => {
-        checkCount++;
-        if (container.clientWidth > 0 && container.clientHeight > 0) {
-          clearInterval(checkSize);
-          // Форсируем перезапуск через ref
-          viewerRef.current = null;
-          window.dispatchEvent(new Event('resize'));
-        } else if (checkCount >= maxChecks) {
-          clearInterval(checkSize);
-          console.error('Container never got dimensions');
-        }
-      }, 50);
-      return () => clearInterval(checkSize);
-    }
+    let checkCount = 0;
+    const maxChecks = 100;
+    const checkSize = setInterval(() => {
+      checkCount++;
+      if (container.clientWidth > 0 && container.clientHeight > 0) {
+        clearInterval(checkSize);
+        setContainerReady(true);
+      } else if (checkCount >= maxChecks) {
+        clearInterval(checkSize);
+        console.error('Container never got dimensions');
+      }
+    }, 50);
+    
+    return () => clearInterval(checkSize);
+  }, []);
+
+  // Инициализация viewer
+  useEffect(() => {
+    if (!containerRef.current || !containerReady) return;
+    
+    // Если viewer уже создан, не создаём снова
+    if (viewerRef.current && !viewerRef.current.isDestroyed()) return;
 
     initCesium();
 
@@ -388,7 +397,7 @@ export default function CesiumViewer() {
       handler.destroy();
       viewer.destroy();
     };
-  }, [showSelectionMarker]);
+  }, [showSelectionMarker, containerReady]);
 
   // Загрузка подложки
   useEffect(() => {
