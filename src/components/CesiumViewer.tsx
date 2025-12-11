@@ -53,6 +53,7 @@ export default function CesiumViewer() {
   const selectedMarkerRef = useRef<Cesium.Entity | null>(null);
   const initialFlyDoneRef = useRef<boolean>(false);
   const currentModelRef = useRef<string>('');
+  const tilesetErrorCacheRef = useRef<Record<string, number>>({});
 
   // Загружаем сохранённые настройки из localStorage
   const [currentModel, setCurrentModel] = useState(() => {
@@ -212,7 +213,8 @@ export default function CesiumViewer() {
     creditContainer.style.display = 'none';
 
     const viewer = new Cesium.Viewer(containerRef.current, {
-      terrainProvider: undefined,
+      // ВАЖНО: используем EllipsoidTerrainProvider чтобы НЕ грузить Cesium Ion
+      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
       baseLayerPicker: false,
       geocoder: false,
       homeButton: false,
@@ -244,6 +246,9 @@ export default function CesiumViewer() {
         },
       },
     });
+
+    // Рельеф уже установлен (EllipsoidTerrainProvider) - плоская земля без запросов к Ion
+    console.log('ℹ️ Используется плоский эллипсоид (без рельефа)');
 
     // Настройка камеры с оптимизациями
     const controller = viewer.scene.screenSpaceCameraController;
@@ -376,89 +381,69 @@ export default function CesiumViewer() {
 
     let cancelled = false;
 
-    const loadBasemap = async () => {
-      // Удаляем предыдущие слои подложки
-      if (imageryLayersRef.current.length > 0 && !viewer.isDestroyed()) {
-        imageryLayersRef.current.forEach(layer => {
-          viewer.imageryLayers.remove(layer);
-        });
-        imageryLayersRef.current = [];
-      }
-
+    const loadTerrain = async () => {
       try {
-        const providers = await createImageryProvider(basemapConfig);
+        const { createTerrainProvider } = await import('@/lib/config/cesium-config');
+        const terrain = await createTerrainProvider('maptiler');
         
-        // Проверяем, что компонент не размонтирован и viewer не уничтожен
-        if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
+        if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
         
-        if (providers) {
-          // Если это массив провайдеров (local_ortho / multi_ortho)
-          if (Array.isArray(providers)) {
-            providers.forEach((provider, index) => {
-              const layer = viewerRef.current!.imageryLayers.addImageryProvider(provider);
-              // Все слои полностью непрозрачные - прозрачность обеспечивается PNG тайлами
-              layer.alpha = 1.0;
-              imageryLayersRef.current.push(layer);
-            });
-          } else {
-            // Одиночный провайдер
-            const layer = viewerRef.current.imageryLayers.addImageryProvider(providers);
-            imageryLayersRef.current.push(layer);
-          }
+        if (terrain) {
+          viewerRef.current.terrainProvider = terrain;
           viewerRef.current.scene.requestRender();
+          console.log('✅ Рельеф MapTiler загружен');
         }
       } catch (err) {
-        if (cancelled) return;
-        console.error('Error loading basemap:', err);
-        setError(`Ошибка загрузки подложки: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`);
+        console.warn('⚠️ Не удалось загрузить рельеф:', err);
       }
     };
 
-    loadBasemap();
+    loadTerrain();
+  }, []);
+
+  // Загрузка/смена подложки
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed()) return;
+
+    const basemapConfig = AVAILABLE_BASEMAPS.find(b => b.id === currentBasemap);
+    if (!basemapConfig) return;
+
+    let cancelled = false;
+
+    const loadImagery = async () => {
+      try {
+        // Удаляем предыдущие слои
+        imageryLayersRef.current.forEach(layer => viewer.imageryLayers.remove(layer, true));
+        imageryLayersRef.current = [];
+
+        const provider = await createImageryProvider(basemapConfig);
+        if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
+
+        const addLayer = (p: Cesium.ImageryProvider) => {
+          const layer = viewer.imageryLayers.addImageryProvider(p);
+          layer.alpha = basemapConfig.opacity ?? 1.0;
+          imageryLayersRef.current.push(layer);
+        };
+
+        if (Array.isArray(provider)) {
+          provider.forEach(p => addLayer(p));
+        } else if (provider) {
+          addLayer(provider);
+        }
+
+        viewer.scene.requestRender();
+      } catch (err) {
+        console.warn('⚠️ Не удалось загрузить подложку:', err);
+      }
+    };
+
+    loadImagery();
 
     return () => {
       cancelled = true;
     };
   }, [currentBasemap]);
-
-  // Загрузка рельефа из AWS Terrarium (публичный, без авторизации)
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed()) return;
-
-    let cancelled = false;
-
-    const loadTerrain = async () => {
-      try {
-        // AWS Terrarium tiles - публичный источник рельефа
-        const terrain = await Cesium.CesiumTerrainProvider.fromUrl(
-          'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
-          {
-            credit: 'Terrain tiles from AWS Terrarium',
-          }
-        );
-        
-        if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
-        
-        viewerRef.current.terrainProvider = terrain;
-        viewerRef.current.scene.globe.depthTestAgainstTerrain = true;
-        viewerRef.current.scene.requestRender();
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Failed to load terrain:', err);
-        // Fallback на эллипсоид при ошибке
-        if (viewerRef.current && !viewerRef.current.isDestroyed()) {
-          viewerRef.current.terrainProvider = new Cesium.EllipsoidTerrainProvider();
-        }
-      }
-    };
-
-    loadTerrain();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Загрузка 3D модели с оптимизациями
   useEffect(() => {
@@ -471,7 +456,35 @@ export default function CesiumViewer() {
       // Даём время ортофото начать загрузку (они важнее)
       await new Promise(resolve => setTimeout(resolve, 500));
       if (cancelled) return;
-      
+
+      // Вспомогательная функция для оценки вертикальной ошибки по tileset.json
+      const getVerticalError = async (url: string): Promise<number> => {
+        if (tilesetErrorCacheRef.current[url] !== undefined) {
+          return tilesetErrorCacheRef.current[url];
+        }
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const children = json?.root?.children || [];
+          const errors: number[] = children
+            .map((c: any) => c?.Error ?? c?.geometricError)
+            .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
+          if (!errors.length) {
+            tilesetErrorCacheRef.current[url] = 0;
+            return 0;
+          }
+          errors.sort((a, b) => a - b);
+          const median = errors[Math.floor(errors.length / 2)];
+          tilesetErrorCacheRef.current[url] = median;
+          return median;
+        } catch (err) {
+          console.warn('⚠️ Не удалось прочитать Error из tileset.json:', err);
+          tilesetErrorCacheRef.current[url] = 0;
+          return 0;
+        }
+      };
+
       setIsLoading(true);
       setLoadingMessage('Загрузка 3D модели...');
       setError(null);
@@ -519,19 +532,94 @@ export default function CesiumViewer() {
           return;
         }
 
-        // Получаем bounding sphere и cartographic для использования далее
-        const boundingSphere = tileset.boundingSphere;
-        const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
-
         viewerRef.current.scene.primitives.add(tileset);
         tilesetRef.current = tileset;
+        viewerRef.current.scene.requestRender();
 
         // Подписываемся на ошибки загрузки тайлов
         tileset.tileFailed.addEventListener((error: { url?: string; message?: string }) => {
           console.error('Tile failed:', error.url);
         });
 
+        // Глобальная коррекция высоты по локальному DEM (сдвигаем весь тайлсет)
+        const demName = currentModel.toLowerCase().includes('krasno') ? 'Krasnoarmeiskoe' : 'Kanash';
+
+        const getBaseHeightFromBoundingVolume = (tile: any): number | null => {
+          const bv = tile.boundingVolume;
+          if (bv?.box) {
+            const box = bv.box;
+            const center = new Cesium.Cartesian3(box[0], box[1], box[2]);
+            const axisX = new Cesium.Cartesian3(box[3], box[4], box[5]);
+            const axisY = new Cesium.Cartesian3(box[6], box[7], box[8]);
+            const axisZ = new Cesium.Cartesian3(box[9], box[10], box[11]);
+            const corners: Cesium.Cartesian3[] = [];
+            const signs = [-1, 1];
+            for (const sx of signs) {
+              for (const sy of signs) {
+                for (const sz of signs) {
+                  const corner = Cesium.Cartesian3.add(
+                    center,
+                    new Cesium.Cartesian3(
+                      sx * axisX.x + sy * axisY.x + sz * axisZ.x,
+                      sx * axisX.y + sy * axisY.y + sz * axisZ.y,
+                      sx * axisX.z + sy * axisY.z + sz * axisZ.z
+                    ),
+                    new Cesium.Cartesian3()
+                  );
+                  corners.push(corner);
+                }
+              }
+            }
+            const heights = corners.map(c => Cesium.Cartographic.fromCartesian(c).height);
+            return Math.min(...heights);
+          }
+          if (bv?.sphere) {
+            const [x, y, z, r] = bv.sphere;
+            const center = new Cesium.Cartesian3(x, y, z);
+            const carto = Cesium.Cartographic.fromCartesian(center);
+            return carto.height - r;
+          }
+          return null;
+        };
+
+        try {
+          const modelVerticalError = await getVerticalError(currentModel);
+          const root = tileset.root;
+          const baseHeight = getBaseHeightFromBoundingVolume(root) ?? Cesium.Cartographic.fromCartesian(tileset.boundingSphere.center).height;
+          const centerCarto = Cesium.Cartographic.fromCartesian(tileset.boundingSphere.center);
+          const demRes = await fetch(
+            `/api/dem-height?lon=${Cesium.Math.toDegrees(centerCarto.longitude)}&lat=${Cesium.Math.toDegrees(centerCarto.latitude)}&name=${demName}`
+          );
+          if (demRes.ok) {
+            const data = await demRes.json();
+            const demHeight = Number(data?.height);
+            if (Number.isFinite(demHeight)) {
+              const heightDiff = demHeight - baseHeight;
+                const normal = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
+                  tileset.boundingSphere.center,
+                  new Cesium.Cartesian3()
+                );
+                const translation = Cesium.Cartesian3.multiplyByScalar(
+                  normal,
+                  heightDiff,
+                  new Cesium.Cartesian3()
+                );
+                const transform = Cesium.Matrix4.fromTranslation(translation);
+                tileset.modelMatrix = Cesium.Matrix4.multiply(
+                  transform,
+                  tileset.modelMatrix,
+                  new Cesium.Matrix4()
+                );
+                console.log(`📍 Tileset adjust ${heightDiff.toFixed(2)}м (DEM ${demName}, base=${baseHeight.toFixed(2)}м, geomErr≈${modelVerticalError.toFixed(2)}м)`);
+            }
+          }
+        } catch (rootErr) {
+          console.warn('⚠️ Tileset DEM adjust failed:', rootErr);
+        }
+
         // Логируем базовую информацию
+        const boundingSphere = tileset.boundingSphere;
+        const cartographic = Cesium.Cartographic.fromCartesian(boundingSphere.center);
         const modelName = currentModel.split('/').pop();
         console.log(`✅ ${modelName} loaded at ${Cesium.Math.toDegrees(cartographic.longitude).toFixed(2)}°, ${Cesium.Math.toDegrees(cartographic.latitude).toFixed(2)}°`);
 

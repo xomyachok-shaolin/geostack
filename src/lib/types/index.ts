@@ -27,6 +27,7 @@ export interface CesiumBasemapConfig {
   type: 'ion' | 'osm' | 'google_satellite' | 'google_hybrid' | 'arcgis' | 'tms' | 'url' | 'none' | 'local_ortho';
   url?: string;
   assetId?: number;
+  opacity?: number;
   rectangle?: {
     west: number;
     south: number;

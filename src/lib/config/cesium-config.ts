@@ -9,7 +9,7 @@ export function initCesium(): void {
   (window as unknown as { CESIUM_BASE_URL: string }).CESIUM_BASE_URL = '/cesium/';
   
   // Cesium Ion токен для доступа к базовым слоям и рельефу
-  // Бесплатный токен можно получить на https://cesium.com/ion/tokens
+  // НО: без VPN Ion может быть заблокирован (403)
   Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJiNDZkN2UxYy1jZGEyLTQ4ZGYtYjQ1MS1hZmRiNzhmZDUyYjMiLCJpZCI6MzY2MjA3LCJpYXQiOjE3NjQ3NjA2MjZ9.EtOGdACo1NmGYx6tBkSJse65ROZ8H8MtttjSIeiUZKw';
   
   // Оптимизации для производительности
@@ -19,6 +19,41 @@ export function initCesium(): void {
   
   // Приоритизация - сначала загружаем видимые тайлы
   Cesium.RequestScheduler.requestsByServer = {};
+}
+
+/**
+ * Создает провайдер рельефа в зависимости от доступности
+ */
+export async function createTerrainProvider(type: 'cesium' | 'maptiler' | 'none' = 'maptiler'): Promise<Cesium.TerrainProvider | undefined> {
+  if (type === 'none') {
+    return undefined;
+  }
+  
+  if (type === 'maptiler') {
+    // MapTiler Terrain - работает без VPN
+    try {
+      return await Cesium.CesiumTerrainProvider.fromUrl(
+        'https://api.maptiler.com/tiles/terrain-quantized-mesh-v2/?key=MRRrl7HjI7IlJp9IxgEB',
+        {
+          requestVertexNormals: true,
+        }
+      );
+    } catch (error) {
+      console.warn('MapTiler terrain failed, using ellipsoid:', error);
+      return undefined;
+    }
+  }
+  
+  // Cesium World Terrain (требует Ion, может быть заблокирован)
+  try {
+    return await Cesium.createWorldTerrainAsync({
+      requestVertexNormals: true,
+      requestWaterMask: false,
+    });
+  } catch (error) {
+    console.warn('Cesium Ion terrain failed (возможно блокировка без VPN), используем плоскую землю:', error);
+    return undefined;
+  }
 }
 
 /**
