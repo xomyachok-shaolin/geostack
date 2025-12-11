@@ -201,42 +201,9 @@ export default function CesiumViewer() {
 
   useResizeObserver(containerRef, handleResize);
 
-  // Состояние готовности контейнера
-  const [containerReady, setContainerReady] = useState(false);
-
-  // Проверка размеров контейнера
-  useEffect(() => {
-    if (!containerRef.current) return;
-    
-    const container = containerRef.current;
-    if (container.clientWidth > 0 && container.clientHeight > 0) {
-      setContainerReady(true);
-      return;
-    }
-
-    // Ждём пока контейнер получит размеры
-    let checkCount = 0;
-    const maxChecks = 100;
-    const checkSize = setInterval(() => {
-      checkCount++;
-      if (container.clientWidth > 0 && container.clientHeight > 0) {
-        clearInterval(checkSize);
-        setContainerReady(true);
-      } else if (checkCount >= maxChecks) {
-        clearInterval(checkSize);
-        console.error('Container never got dimensions');
-      }
-    }, 50);
-    
-    return () => clearInterval(checkSize);
-  }, []);
-
   // Инициализация viewer
   useEffect(() => {
-    if (!containerRef.current || !containerReady) return;
-    
-    // Если viewer уже создан, не создаём снова
-    if (viewerRef.current && !viewerRef.current.isDestroyed()) return;
+    if (!containerRef.current) return;
 
     initCesium();
 
@@ -397,7 +364,7 @@ export default function CesiumViewer() {
       handler.destroy();
       viewer.destroy();
     };
-  }, [showSelectionMarker, containerReady]);
+  }, [showSelectionMarker]);
 
   // Загрузка подложки
   useEffect(() => {
@@ -454,7 +421,7 @@ export default function CesiumViewer() {
     };
   }, [currentBasemap]);
 
-  // Загрузка Cesium World Terrain
+  // Загрузка AWS Terrain (публичный, без Ion токена)
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
@@ -463,7 +430,11 @@ export default function CesiumViewer() {
 
     const loadTerrain = async () => {
       try {
-        const terrain = await Cesium.CesiumTerrainProvider.fromIonAssetId(1);
+        // AWS Terrain - публичный доступ, не требует Ion токена
+        const terrain = await Cesium.createWorldTerrainAsync({
+          requestWaterMask: true,
+          requestVertexNormals: true,
+        });
         
         if (cancelled || !viewerRef.current || viewerRef.current.isDestroyed()) return;
         
@@ -472,7 +443,7 @@ export default function CesiumViewer() {
         viewerRef.current.scene.requestRender();
       } catch (err) {
         if (cancelled) return;
-        console.error('Failed to load Cesium World Terrain:', err);
+        console.error('Failed to load AWS terrain:', err);
         // Fallback на эллипсоид при ошибке
         if (viewerRef.current && !viewerRef.current.isDestroyed()) {
           viewerRef.current.terrainProvider = new Cesium.EllipsoidTerrainProvider();
