@@ -194,7 +194,7 @@ export default function CesiumViewer() {
 
   // Обработка ресайза
   const handleResize = useCallback(() => {
-    if (viewerRef.current) {
+    if (viewerRef.current && !viewerRef.current.isDestroyed()) {
       viewerRef.current.resize();
     }
   }, []);
