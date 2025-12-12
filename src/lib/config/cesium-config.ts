@@ -30,10 +30,15 @@ export async function createTerrainProvider(type: 'cesium' | 'maptiler' | 'none'
   }
   
   if (type === 'maptiler') {
-    // MapTiler Terrain - работает без VPN
+    // MapTiler Terrain через локальный прокси (для обхода CORS на production)
     try {
+      // Определяем URL в зависимости от окружения
+      const terrainUrl = typeof window !== 'undefined' 
+        ? `${window.location.origin}/api/terrain/`
+        : '/api/terrain/';
+      
       return await Cesium.CesiumTerrainProvider.fromUrl(
-        'https://api.maptiler.com/tiles/terrain-quantized-mesh-v2/?key=MRRrl7HjI7IlJp9IxgEB',
+        terrainUrl,
         {
           requestVertexNormals: true,
         }
