@@ -1,61 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
 
-const execAsync = promisify(exec);
+import { getDemHeight, type DemName } from '@/lib/utils/dem-provider';
 
-/**
- * API endpoint для получения высоты из локального DEM
- * GET /api/dem-height?lon=47.5&lat=55.5&name=kanash
- */
+export const runtime = 'nodejs';
+
+function parseDemName(raw: string | null): DemName | null {
+  if (!raw) return null;
+  const norm = raw.toLowerCase();
+  if (norm.includes('kanash')) return 'Kanash';
+  if (norm.includes('krasno')) return 'Krasnoarmeiskoe';
+  return null;
+}
+
 export async function GET(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const lon = searchParams.get('lon');
-    const lat = searchParams.get('lat');
-    const name = searchParams.get('name') || 'kanash';
+  const { searchParams } = new URL(request.url);
+  const lonStr = searchParams.get('lon');
+  const latStr = searchParams.get('lat');
+  const nameStr = searchParams.get('name');
 
-    if (!lon || !lat) {
-      return NextResponse.json(
-        { error: 'Missing lon or lat parameters' },
-        { status: 400 }
-      );
-    }
+  const lon = lonStr ? Number(lonStr) : NaN;
+  const lat = latStr ? Number(latStr) : NaN;
+  const demName = parseDemName(nameStr);
 
-    // Путь к DEM файлу
-    const demPath = path.join(
-      process.cwd(),
-      'data',
-      'terrain',
-      `dem_UTM_${name}.tif`
-    );
-
-    // Используем gdallocationinfo для получения высоты
-    const { stdout } = await execAsync(
-      `gdallocationinfo -wgs84 -valonly "${demPath}" ${lon} ${lat}`
-    );
-
-    const height = parseFloat(stdout.trim());
-
-    if (isNaN(height)) {
-      return NextResponse.json(
-        { error: 'Invalid height value' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      lon: parseFloat(lon),
-      lat: parseFloat(lat),
-      height,
-      source: name,
-    });
-  } catch (error) {
-    console.error('DEM height query error:', error);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat) || !demName) {
     return NextResponse.json(
-      { error: 'Failed to get height from DEM' },
-      { status: 500 }
+      { error: 'Invalid parameters. Expect lon, lat, name={Kanash|Krasnoarmeiskoe}' },
+      { status: 400 }
     );
   }
+
+  try {
+    const height = await getDemHeight(demName, lon, lat);
+    if (height === null) {
+      return NextResponse.json(
+        { height: null, source: demName, outside: true },
+        { status: 200 }
+      );
+    }
+    return NextResponse.json(
+      { height, source: demName },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, max-age=3600',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  } catch (err) {
+    console.error('DEM height error:', err);
+    return NextResponse.json({ error: 'DEM read error' }, { status: 500 });
+  }
 }
+

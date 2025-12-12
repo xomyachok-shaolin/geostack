@@ -54,6 +54,7 @@ export default function CesiumViewer() {
   const initialFlyDoneRef = useRef<boolean>(false);
   const currentModelRef = useRef<string>('');
   const tilesetErrorCacheRef = useRef<Record<string, number>>({});
+  const tilesetBaseCacheRef = useRef<Record<string, number | null>>({});
 
   // Загружаем сохранённые настройки из localStorage
   const [currentModel, setCurrentModel] = useState(() => {
@@ -457,31 +458,104 @@ export default function CesiumViewer() {
       await new Promise(resolve => setTimeout(resolve, 500));
       if (cancelled) return;
 
-      // Вспомогательная функция для оценки вертикальной ошибки по tileset.json
-      const getVerticalError = async (url: string): Promise<number> => {
-        if (tilesetErrorCacheRef.current[url] !== undefined) {
-          return tilesetErrorCacheRef.current[url];
+      // Читаем tileset.json один раз и извлекаем:
+      // 1) типичную вертикальную ошибку (Error/geometricError)
+      // 2) оценку базовой высоты модели (по boundingVolume детей)
+      const getTilesetInfo = async (
+        url: string
+      ): Promise<{ verticalError: number; baseHeight: number | null }> => {
+        const cachedErr = tilesetErrorCacheRef.current[url];
+        const cachedBase = tilesetBaseCacheRef.current[url];
+        if (cachedErr !== undefined && cachedBase !== undefined) {
+          return { verticalError: cachedErr, baseHeight: cachedBase };
         }
+
         try {
           const res = await fetch(url);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const json = await res.json();
+
           const children = json?.root?.children || [];
+
+          // Ошибка
           const errors: number[] = children
             .map((c: any) => c?.Error ?? c?.geometricError)
             .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
-          if (!errors.length) {
-            tilesetErrorCacheRef.current[url] = 0;
-            return 0;
+          let medianChildError = 0;
+          if (errors.length) {
+            errors.sort((a, b) => a - b);
+            medianChildError = errors[Math.floor(errors.length / 2)];
           }
-          errors.sort((a, b) => a - b);
-          const median = errors[Math.floor(errors.length / 2)];
-          tilesetErrorCacheRef.current[url] = median;
-          return median;
+
+          const rootError = json?.Error ?? json?.root?.Error;
+          const errCandidates = [medianChildError, rootError]
+            .filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+          const chosenError = errCandidates.length ? Math.min(...errCandidates) : 0;
+
+          // База модели
+          const baseFromBoundingVolume = (bv: any): number | null => {
+            if (!bv) return null;
+            if (Array.isArray(bv.box)) {
+              const box = bv.box as number[];
+              if (box.length !== 12) return null;
+              const center = new Cesium.Cartesian3(box[0], box[1], box[2]);
+              const axisX = new Cesium.Cartesian3(box[3], box[4], box[5]);
+              const axisY = new Cesium.Cartesian3(box[6], box[7], box[8]);
+              const axisZ = new Cesium.Cartesian3(box[9], box[10], box[11]);
+              const corners: Cesium.Cartesian3[] = [];
+              const signs = [-1, 1];
+              for (const sx of signs) {
+                for (const sy of signs) {
+                  for (const sz of signs) {
+                    corners.push(
+                      Cesium.Cartesian3.add(
+                        center,
+                        new Cesium.Cartesian3(
+                          sx * axisX.x + sy * axisY.x + sz * axisZ.x,
+                          sx * axisX.y + sy * axisY.y + sz * axisZ.y,
+                          sx * axisX.z + sy * axisY.z + sz * axisZ.z
+                        ),
+                        new Cesium.Cartesian3()
+                      )
+                    );
+                  }
+                }
+              }
+              const heights = corners.map(c => Cesium.Cartographic.fromCartesian(c).height);
+              return Math.min(...heights);
+            }
+            if (Array.isArray(bv.sphere)) {
+              const s = bv.sphere as number[];
+              if (s.length !== 4) return null;
+              const center = new Cesium.Cartesian3(s[0], s[1], s[2]);
+              const carto = Cesium.Cartographic.fromCartesian(center);
+              // Радиус сферы в 3D Tiles включает горизонтальный размер.
+              // Для крупных сфер alt - r сильно занижает базу, поэтому ограничиваем "вертикальную" часть.
+              const verticalRadius = Math.min(s[3], 15);
+              return carto.height - verticalRadius;
+            }
+            return null;
+          };
+
+          const childBases = children
+            .map((c: any) => baseFromBoundingVolume(c?.boundingVolume))
+            .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
+
+          let baseHeight: number | null = null;
+          if (childBases.length) {
+            childBases.sort((a, b) => a - b);
+            baseHeight = childBases[Math.floor(childBases.length / 2)];
+          }
+
+          tilesetErrorCacheRef.current[url] = chosenError;
+          tilesetBaseCacheRef.current[url] = baseHeight;
+
+          return { verticalError: chosenError, baseHeight };
         } catch (err) {
-          console.warn('⚠️ Не удалось прочитать Error из tileset.json:', err);
+          console.warn('⚠️ Не удалось прочитать tileset.json для Error/baseHeight:', err);
           tilesetErrorCacheRef.current[url] = 0;
-          return 0;
+          tilesetBaseCacheRef.current[url] = null;
+          return { verticalError: 0, baseHeight: null };
         }
       };
 
@@ -577,15 +651,31 @@ export default function CesiumViewer() {
             const [x, y, z, r] = bv.sphere;
             const center = new Cesium.Cartesian3(x, y, z);
             const carto = Cesium.Cartographic.fromCartesian(center);
+            // Для крупных sphere (особенно root) радиус включает горизонтальный размер,
+            // поэтому alt - r даёт бессмысленно низкую "базу". Если есть дети — оцениваем базу по ним.
+            const children = tile.children;
+            if (Array.isArray(children) && children.length) {
+              const childBases = children
+                .map((c: any) => getBaseHeightFromBoundingVolume(c))
+                .filter((v: any) => typeof v === 'number' && Number.isFinite(v)) as number[];
+              if (childBases.length) {
+                childBases.sort((a, b) => a - b);
+                return childBases[Math.floor(childBases.length / 2)]; // медиана
+              }
+            }
             return carto.height - r;
           }
           return null;
         };
 
         try {
-          const modelVerticalError = await getVerticalError(currentModel);
+          const { verticalError: modelVerticalError, baseHeight: jsonBaseHeight } =
+            await getTilesetInfo(currentModel);
           const root = tileset.root;
-          const baseHeight = getBaseHeightFromBoundingVolume(root) ?? Cesium.Cartographic.fromCartesian(tileset.boundingSphere.center).height;
+          const runtimeBase =
+            getBaseHeightFromBoundingVolume(root) ??
+            Cesium.Cartographic.fromCartesian(tileset.boundingSphere.center).height;
+          const baseHeight = jsonBaseHeight ?? runtimeBase;
           const centerCarto = Cesium.Cartographic.fromCartesian(tileset.boundingSphere.center);
           const demRes = await fetch(
             `/api/dem-height?lon=${Cesium.Math.toDegrees(centerCarto.longitude)}&lat=${Cesium.Math.toDegrees(centerCarto.latitude)}&name=${demName}`
@@ -594,23 +684,28 @@ export default function CesiumViewer() {
             const data = await demRes.json();
             const demHeight = Number(data?.height);
             if (Number.isFinite(demHeight)) {
-              const heightDiff = demHeight - baseHeight;
-                const normal = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
-                  tileset.boundingSphere.center,
-                  new Cesium.Cartesian3()
-                );
-                const translation = Cesium.Cartesian3.multiplyByScalar(
-                  normal,
-                  heightDiff,
-                  new Cesium.Cartesian3()
-                );
-                const transform = Cesium.Matrix4.fromTranslation(translation);
-                tileset.modelMatrix = Cesium.Matrix4.multiply(
-                  transform,
-                  tileset.modelMatrix,
-                  new Cesium.Matrix4()
-                );
-                console.log(`📍 Tileset adjust ${heightDiff.toFixed(2)}м (DEM ${demName}, base=${baseHeight.toFixed(2)}м, geomErr≈${modelVerticalError.toFixed(2)}м)`);
+              const rawDiff = demHeight - baseHeight;
+              const heightDiff = rawDiff;
+
+              const normal = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(
+                tileset.boundingSphere.center,
+                new Cesium.Cartesian3()
+              );
+              const translation = Cesium.Cartesian3.multiplyByScalar(
+                normal,
+                heightDiff,
+                new Cesium.Cartesian3()
+              );
+              const transform = Cesium.Matrix4.fromTranslation(translation);
+              tileset.modelMatrix = Cesium.Matrix4.multiply(
+                transform,
+                tileset.modelMatrix,
+                new Cesium.Matrix4()
+              );
+
+              console.log(
+                `📍 Tileset adjust ${heightDiff.toFixed(2)}м (DEM ${demName}, base=${baseHeight.toFixed(2)}м, dem=${demHeight.toFixed(2)}м, modelErr≈${modelVerticalError.toFixed(2)}м)`
+              );
             }
           }
         } catch (rootErr) {
